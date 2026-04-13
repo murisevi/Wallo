@@ -2,27 +2,33 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Building2, Loader2, ArrowLeft } from 'lucide-react';
+import { Search, Building2, Loader2 } from 'lucide-react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { BankInstitution } from '@/types';
 
 export default function ConnectBankPage() {
   const [search, setSearch] = useState('');
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
-  const { data: institutions, isLoading } = useQuery({
+  const {
+    data: institutions,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['institutions'],
     queryFn: () => api.get<BankInstitution[]>('/banking/institutions?country=es'),
+    staleTime: 0,   // always fetch fresh — list changes when backend reconnects
+    retry: 1,
   });
 
   const filtered = (institutions ?? []).filter((bank) =>
     bank.name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Sort BBVA to top for sandbox testing
   const sorted = [...filtered].sort((a, b) => {
     const aIsBBVA = a.name.toLowerCase().includes('bbva');
     const bIsBBVA = b.name.toLowerCase().includes('bbva');
@@ -33,7 +39,7 @@ export default function ConnectBankPage() {
 
   async function handleConnect(bank: BankInstitution) {
     setConnecting(bank.name);
-    setError(null);
+    setConnectError(null);
     try {
       const result = await api.post<{ url: string; authorization_id: string }>(
         '/banking/connect',
@@ -41,29 +47,21 @@ export default function ConnectBankPage() {
       );
       window.location.assign(result.url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al conectar con el banco.');
+      setConnectError(err instanceof Error ? err.message : 'Error al conectar con el banco.');
       setConnecting(null);
     }
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-8">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/dashboard"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-        >
-          <ArrowLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Conectar banco</h1>
-          <p className="text-sm text-gray-500">Selecciona tu entidad bancaria para continuar</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-extrabold tracking-tight text-[#303333]">Conecta tu banco</h1>
+        <p className="mt-1 text-sm text-[#5d605f]">Selecciona tu entidad bancaria para continuar</p>
       </div>
 
       {/* Sandbox callout */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <div className="rounded-2xl bg-amber-50 px-5 py-4 text-sm text-amber-800">
         <strong>Entorno sandbox:</strong> usa <strong>BBVA</strong> para probar la conexión Open
         Banking con datos de prueba.
       </div>
@@ -72,22 +70,20 @@ export default function ConnectBankPage() {
       <div className="relative">
         <Search
           size={15}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#5d605f]"
         />
         <input
           type="text"
-          placeholder="Buscar banco..."
+          placeholder="Buscar banco…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-4 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-shadow"
+          className="w-full rounded-xl bg-[#f3f4f3] py-3 pl-10 pr-4 text-sm text-[#303333] placeholder:text-[#5d605f]/60 outline-none ring-1 ring-transparent focus:ring-2 focus:ring-amber-300 transition-all"
         />
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+      {/* Error banner (connect action errors) */}
+      {connectError && (
+        <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm text-red-700">{connectError}</div>
       )}
 
       {/* Bank grid */}
@@ -95,8 +91,23 @@ export default function ConnectBankPage() {
         <div className="flex items-center justify-center py-16">
           <Loader2 size={28} className="animate-spin text-amber-400" />
         </div>
+      ) : isError ? (
+        <div className="rounded-2xl bg-red-50 px-5 py-6 text-center">
+          <p className="text-sm font-semibold text-red-700">
+            No se pudieron cargar los bancos.
+          </p>
+          <p className="mt-1 text-xs text-red-600">
+            {error instanceof Error ? error.message : 'Error desconocido'}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-4 rounded-xl bg-red-100 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-200 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
       ) : sorted.length === 0 ? (
-        <p className="py-16 text-center text-sm text-gray-400">
+        <p className="py-16 text-center text-sm text-[#5d605f]">
           {search ? 'No se encontraron bancos.' : 'No hay bancos disponibles.'}
         </p>
       ) : (
@@ -109,8 +120,8 @@ export default function ConnectBankPage() {
                 key={`${bank.name}-${bank.country}`}
                 onClick={() => handleConnect(bank)}
                 disabled={connecting !== null}
-                className={`flex items-center gap-4 rounded-xl border bg-white px-4 py-4 text-left transition-all hover:border-amber-300 hover:shadow-sm disabled:opacity-60 ${
-                  isBBVA ? 'border-amber-300 ring-1 ring-amber-100' : 'border-gray-200'
+                className={`flex items-center gap-4 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_4px_16px_rgba(48,51,51,0.06)] transition-all hover:shadow-[0_8px_24px_rgba(48,51,51,0.1)] disabled:opacity-60 ${
+                  isBBVA ? 'ring-2 ring-amber-300' : ''
                 }`}
               >
                 {bank.logo ? (
@@ -119,19 +130,19 @@ export default function ConnectBankPage() {
                     alt={bank.name}
                     width={36}
                     height={36}
-                    className="rounded-lg object-contain"
+                    className="rounded-xl object-contain"
                     unoptimized
                   />
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100">
-                    <Building2 size={16} className="text-gray-400" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f3f4f3]">
+                    <Building2 size={16} className="text-[#5d605f]" />
                   </div>
                 )}
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">{bank.name}</p>
+                  <p className="truncate text-sm font-bold text-[#303333]">{bank.name}</p>
                   {isBBVA && (
-                    <p className="mt-0.5 text-xs font-medium text-amber-600">
+                    <p className="mt-0.5 text-xs font-semibold text-amber-600">
                       Recomendado para sandbox
                     </p>
                   )}

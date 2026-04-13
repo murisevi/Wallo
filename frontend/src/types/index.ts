@@ -1,5 +1,9 @@
 // Shared TypeScript interfaces matching backend Pydantic schemas.
 
+import type { Category } from '@/types/categories';
+
+export type { Category } from '@/types/categories';
+
 export interface User {
   id: string;
   email: string;
@@ -24,6 +28,19 @@ export interface AccountSummary {
   currency: string;
 }
 
+/** Matches BankAccountResponse from backend banking/schemas.py */
+export interface BankAccount {
+  id: string;
+  iban: string | null;
+  name: string | null;
+  account_type: string | null;
+  currency: string;
+  /** Decimal serialised as string */
+  balance_amount: string | null;
+  balance_type: string | null;
+  last_synced_at: string | null;
+}
+
 export interface Transaction {
   id: string;
   account_id: string;
@@ -38,8 +55,15 @@ export interface Transaction {
   creditor_name: string | null;
   credit_debit_indicator: 'CRDT' | 'DBIT';
   status: string;
-  category: string | null;
   account_iban: string | null;
+  // Categorization fields
+  category_id: string | null;
+  category: Category | null;
+  category_name: string | null;
+  category_icon: string | null;
+  categorization_method: 'merchant_map' | 'ml_auto' | 'ml_suggested' | 'manual' | null;
+  confidence_score: number | null;
+  is_manually_corrected: boolean;
 }
 
 export interface TransactionList {
@@ -47,6 +71,7 @@ export interface TransactionList {
   total: number;
   page: number;
   page_size: number;
+  total_pages: number;
 }
 
 export interface Dashboard {

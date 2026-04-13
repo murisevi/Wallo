@@ -2,26 +2,23 @@ export default function TransactionsLoading() {
   return (
     <div className="space-y-6">
       {/* Header skeleton */}
-      <div className="flex items-center gap-3">
-        <div className="h-8 w-8 animate-pulse rounded-lg bg-gray-100" />
-        <div className="h-6 w-40 animate-pulse rounded-full bg-gray-200" />
+      <div>
+        <div className="h-8 w-44 animate-pulse rounded-full bg-[#f3f4f3]" />
+        <div className="mt-2 h-4 w-24 animate-pulse rounded-full bg-[#edeeed]" />
       </div>
 
       {/* Search skeleton */}
-      <div className="h-10 animate-pulse rounded-xl bg-gray-100" />
+      <div className="h-11 animate-pulse rounded-xl bg-[#f3f4f3]" />
 
       {/* Row skeletons */}
-      <div className="rounded-xl border border-gray-200 bg-white px-5 divide-y divide-gray-100">
+      <div className="rounded-2xl bg-white px-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
         {Array.from({ length: 10 }, (_, i) => (
-          <div key={i} className="flex animate-pulse items-center justify-between gap-4 py-3.5">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-gray-100" />
-              <div>
-                <div className="h-4 w-40 rounded-full bg-gray-200" />
-                <div className="mt-1.5 h-3 w-20 rounded-full bg-gray-100" />
-              </div>
+          <div key={i} className="flex animate-pulse items-center justify-between gap-4 py-4 border-b border-[#f3f4f3] last:border-0">
+            <div className="flex-1">
+              <div className="h-4 w-40 rounded-full bg-[#f3f4f3]" />
+              <div className="mt-1.5 h-3 w-20 rounded-full bg-[#edeeed]" />
             </div>
-            <div className="h-4 w-20 rounded-full bg-gray-200" />
+            <div className="h-4 w-20 rounded-full bg-[#f3f4f3]" />
           </div>
         ))}
       </div>

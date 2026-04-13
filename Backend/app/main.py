@@ -15,13 +15,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup — initialise the Enable Banking client once and share via app.state
     from app.banking.client import EnableBankingClient
     from app.banking.exceptions import EnableBankingAuthError
+    from app.categories.seed import seed_default_categories
+    from app.config import settings
+    from app.database import AsyncSessionLocal
+
+    settings.check_enable_banking()
 
     try:
         app.state.eb_client = EnableBankingClient()
-        logger.info("Enable Banking client initialised")
+        logger.info("Enable Banking client initialised successfully")
     except EnableBankingAuthError as exc:
-        logger.warning("Enable Banking client unavailable at startup: %s", exc)
+        logger.error(
+            "Enable Banking client failed to initialise: %s\n"
+            "  → Verify ENABLE_BANKING_PRIVATE_KEY_PATH points to your .pem file "
+            "(currently: '%s') and that ENABLE_BANKING_APP_ID is set.\n"
+            "  → The /banking/institutions endpoint will return sandbox fallback banks "
+            "until this is fixed.",
+            exc,
+            settings.enable_banking_private_key_path,
+        )
         app.state.eb_client = None
+
+    # Seed system categories (idempotent — no-op if already present)
+    async with AsyncSessionLocal() as db:
+        mapping = await seed_default_categories(db)
+        logger.info("Default categories ready (%d categories)", len(mapping))
 
     yield
 
@@ -38,9 +56,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.config import settings as _settings  # noqa: E402
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,13 +68,19 @@ app.add_middleware(
 
 from app.auth.router import router as auth_router  # noqa: E402
 from app.banking.router import router as banking_router  # noqa: E402
+from app.budgets.router import router as budgets_router  # noqa: E402
+from app.categories.router import router as categories_router  # noqa: E402
 from app.dashboard.router import router as dashboard_router  # noqa: E402
+from app.reports.router import router as reports_router  # noqa: E402
 from app.transactions.router import router as transactions_router  # noqa: E402
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(banking_router, prefix="/api/v1")
 app.include_router(transactions_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(budgets_router, prefix="/api/v1")
+app.include_router(categories_router, prefix="/api/v1")
+app.include_router(reports_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["meta"])

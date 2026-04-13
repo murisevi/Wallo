@@ -12,14 +12,12 @@ function CallbackContent() {
   const router = useRouter();
   const code = searchParams.get('code');
 
-  // Derive initial status from code presence — no setState in the effect.
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>(
     code ? 'loading' : 'error',
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(
     code ? null : 'No se recibió el código de autorización del banco.',
   );
-  // Prevent double-invocation in React Strict Mode.
   const called = useRef(false);
 
   useEffect(() => {
@@ -30,7 +28,11 @@ function CallbackContent() {
       .post('/banking/callback', { code })
       .then(() => {
         setStatus('success');
-        setTimeout(() => router.replace('/dashboard'), 1800);
+        // Check if the connect flow was initiated from a specific page (e.g. /settings)
+        const returnTo = sessionStorage.getItem('wallo:banking_return_to') ?? '/dashboard';
+        sessionStorage.removeItem('wallo:banking_return_to');
+        const destination = returnTo === '/settings' ? '/settings?connected=1' : returnTo;
+        setTimeout(() => router.replace(destination), 1800);
       })
       .catch((err: unknown) => {
         setStatus('error');
@@ -42,42 +44,41 @@ function CallbackContent() {
 
   if (status === 'loading') {
     return (
-      <div className="flex flex-col items-center gap-4 py-20 text-center">
-        <Loader2 size={44} className="animate-spin text-amber-400" />
-        <p className="text-sm font-medium text-gray-700">Conectando con tu banco…</p>
-        <p className="text-xs text-gray-400">Esto puede tardar unos segundos.</p>
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <Loader2 size={44} className="animate-spin text-amber-500" />
+        <p className="text-base font-bold text-[#303333]">Conectando con tu banco…</p>
+        <p className="text-sm text-[#5d605f]">Esto puede tardar unos segundos.</p>
       </div>
     );
   }
 
   if (status === 'success') {
     return (
-      <div className="flex flex-col items-center gap-4 py-20 text-center">
-        <CheckCircle size={44} className="text-green-500" />
-        <p className="text-sm font-medium text-gray-700">¡Banco conectado correctamente!</p>
-        <p className="text-xs text-gray-400">Redirigiendo al panel…</p>
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <CheckCircle size={44} className="text-[#166534]" />
+        <p className="text-base font-bold text-[#303333]">¡Banco conectado correctamente!</p>
+        <p className="text-sm text-[#5d605f]">Redirigiendo al panel…</p>
       </div>
     );
   }
 
-  // error
   return (
-    <div className="flex flex-col items-center gap-4 py-20 text-center">
+    <div className="flex flex-col items-center gap-4 py-16 text-center">
       <XCircle size={44} className="text-red-400" />
       <div>
-        <p className="text-sm font-medium text-gray-700">No se pudo completar la conexión</p>
-        {errorMsg && <p className="mt-1 text-xs text-red-500">{errorMsg}</p>}
+        <p className="text-base font-bold text-[#303333]">No se pudo completar la conexión</p>
+        {errorMsg && <p className="mt-1 text-sm text-red-500">{errorMsg}</p>}
       </div>
-      <div className="flex gap-3">
+      <div className="mt-2 flex gap-3">
         <Link
           href="/banking/connect"
-          className="rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-500 transition-colors"
+          className="rounded-full bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-2.5 text-sm font-bold text-white hover:from-amber-400 hover:to-amber-500 transition-all"
         >
           Reintentar
         </Link>
         <Link
           href="/dashboard"
-          className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+          className="rounded-full bg-[#f3f4f3] px-6 py-2.5 text-sm font-semibold text-[#303333] hover:bg-[#edeeed] transition-colors"
         >
           Ir al panel
         </Link>
@@ -89,15 +90,17 @@ function CallbackContent() {
 export default function CallbackPage() {
   return (
     <div className="mx-auto max-w-md">
-      <Suspense
-        fallback={
-          <div className="flex flex-col items-center gap-4 py-20">
-            <Loader2 size={44} className="animate-spin text-amber-400" />
-          </div>
-        }
-      >
-        <CallbackContent />
-      </Suspense>
+      <div className="overflow-hidden rounded-3xl bg-white shadow-[0_20px_40px_rgba(48,51,51,0.08)]">
+        <Suspense
+          fallback={
+            <div className="flex flex-col items-center gap-4 py-16">
+              <Loader2 size={44} className="animate-spin text-amber-500" />
+            </div>
+          }
+        >
+          <CallbackContent />
+        </Suspense>
+      </div>
     </div>
   );
 }

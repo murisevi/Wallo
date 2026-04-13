@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient
 
-from app.banking.router import get_eb_client
+from app.banking.router import get_eb_client, get_eb_client_or_none
 from app.main import app
 
 # ---------------------------------------------------------------------------
@@ -78,11 +78,18 @@ def make_mock_eb_client() -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def override_eb_client():
-    """Replace the real EnableBankingClient with a mock for every test."""
+    """Replace the real EnableBankingClient with a mock for every test.
+
+    Both get_eb_client (required, raises 503 when None) and
+    get_eb_client_or_none (optional, used by list_institutions) are overridden
+    so that all banking endpoints receive the same mock.
+    """
     mock_client = make_mock_eb_client()
     app.dependency_overrides[get_eb_client] = lambda: mock_client
+    app.dependency_overrides[get_eb_client_or_none] = lambda: mock_client
     yield mock_client
     app.dependency_overrides.pop(get_eb_client, None)
+    app.dependency_overrides.pop(get_eb_client_or_none, None)
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +145,34 @@ async def test_list_institutions_custom_country(
     resp = await client.get("/api/v1/banking/institutions?country=pt")
     assert resp.status_code == 200
     override_eb_client.list_aspsps.assert_called_once_with("PT")
+
+
+@pytest.mark.asyncio
+async def test_list_institutions_sandbox_fallback(client: AsyncClient) -> None:
+    """When Enable Banking credentials are missing, return sandbox fallback banks.
+
+    This covers the real-world scenario where ENABLE_BANKING_PRIVATE_KEY_PATH
+    points to a non-existent file and the client never initialises.
+    """
+    # Temporarily override the optional dependency to simulate a missing client
+    app.dependency_overrides[get_eb_client_or_none] = lambda: None
+    try:
+        resp = await client.get("/api/v1/banking/institutions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) >= 2  # at least BBVA + Mock ASPSP
+        names = [b["name"] for b in data]
+        assert "BBVA" in names
+        assert "Mock ASPSP" in names
+        # All entries must have at minimum name and country
+        for bank in data:
+            assert "name" in bank
+            assert "country" in bank
+    finally:
+        # Restore the mock client set by the autouse fixture
+        mock_client = make_mock_eb_client()
+        app.dependency_overrides[get_eb_client_or_none] = lambda: mock_client
 
 
 # ---------------------------------------------------------------------------

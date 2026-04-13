@@ -7,6 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
+_TZ = DateTime(timezone=True)  # TIMESTAMP WITH TIME ZONE throughout
+
 
 class BankConnection(Base):
     __tablename__ = "bank_connections"
@@ -26,15 +28,13 @@ class BankConnection(Base):
     session_id: Mapped[str | None] = mapped_column(
         String(100), unique=True, nullable=True
     )
-    session_valid_until: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
-    )
+    session_valid_until: Mapped[datetime | None] = mapped_column(_TZ, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending", server_default="pending"
     )
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(_TZ, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now()
+        _TZ, server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -66,8 +66,8 @@ class BankAccount(Base):
     )
     balance_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     balance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_synced_at: Mapped[datetime | None] = mapped_column(_TZ, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(_TZ, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now()
+        _TZ, server_default=func.now(), onupdate=func.now()
     )

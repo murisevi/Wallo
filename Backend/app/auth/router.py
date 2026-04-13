@@ -1,7 +1,19 @@
 from fastapi import APIRouter, status
 
-from app.auth.schemas import TokenResponse, UserCreate, UserLogin, UserResponse
-from app.auth.service import authenticate_user, register_user
+from app.auth.schemas import (
+    TokenResponse,
+    UserCreate,
+    UserLogin,
+    UserProfileResponse,
+    UserProfileUpdate,
+    UserResponse,
+)
+from app.auth.service import (
+    authenticate_user,
+    get_user_profile,
+    register_user,
+    update_user_profile,
+)
 from app.dependencies import CurrentUser, DbSession
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -28,3 +40,17 @@ async def login(credentials: UserLogin, db: DbSession) -> TokenResponse:
 async def me(current_user: CurrentUser) -> UserResponse:
     """Return the profile of the currently authenticated user."""
     return UserResponse.model_validate(current_user)
+
+
+@router.get("/profile", response_model=UserProfileResponse)
+async def get_profile(current_user: CurrentUser, db: DbSession) -> UserProfileResponse:
+    """Return the full profile of the authenticated user."""
+    return await get_user_profile(db, current_user.id)
+
+
+@router.patch("/profile", response_model=UserProfileResponse)
+async def patch_profile(
+    body: UserProfileUpdate, current_user: CurrentUser, db: DbSession
+) -> UserProfileResponse:
+    """Update name, email, or currency for the authenticated user."""
+    return await update_user_profile(db, current_user.id, body)

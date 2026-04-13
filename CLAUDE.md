@@ -4,16 +4,19 @@ Wallo is a PSD2 Open Banking personal finance web app (TFG — Universidad de Se
 Users connect European bank accounts via Enable Banking, view unified balances, track spending,
 and get ML-powered categorization and predictions. Solo-developer monorepo: Python backend + TypeScript frontend.
 
-## Current Phase: MVP (Open Banking Proof of Concept)
+## Current Phase: MVP + ML Categorization
 
-The MVP proves Open Banking viability. Scope limited to:
+Core MVP (Open Banking) is complete. ML transaction categorization has been implemented on top:
 1. User registration/login (JWT auth)
 2. Connect bank via Enable Banking Sandbox (Mock ASPSP or BBVA sandbox)
 3. Fetch and store accounts + balances + transactions
 4. Dashboard showing total balance across all connected accounts
-5. Basic transaction list with pagination
+5. Transaction list with pagination, search, and category filters
+6. Automatic ML categorization on sync (3-layer cascade: merchant map → ML → threshold)
+7. User corrections with active learning (CategoryCorrection + MerchantMapping upsert)
+8. Category management API (list, create custom, PATCH for corrections)
 
-NOT in MVP: ML categorization, budgets, goals, reports, Celery workers, Sankey charts.
+NOT implemented yet: budgets, goals, reports, Celery workers, Sankey charts.
 
 ## Tech Stack
 - **Backend**: Python 3.12, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2
@@ -21,6 +24,7 @@ NOT in MVP: ML categorization, budgets, goals, reports, Celery workers, Sankey c
 - **Database**: PostgreSQL 16 via asyncpg
 - **Cache**: Redis 7 (MVP: optional, for session caching)
 - **Banking**: Enable Banking API (PSD2 Open Banking) — base URL: https://api.enablebanking.com
+- **ML**: scikit-learn 1.5.2 (TF-IDF + GradientBoosting), joblib 1.4.2 (model persistence)
 - **Infra**: Docker Compose (dev), single docker-compose.yml at repo root
 
 ## Commands
@@ -31,6 +35,10 @@ pytest tests/ -v --cov=app
 ruff check app/ --fix && ruff format app/
 alembic revision --autogenerate -m "description"
 alembic upgrade head
+
+# ML model (from /backend)
+python -m scripts.train_base_model      # Train base model from data/training_data.csv
+python -m app.categories.tasks          # Retrain with base data + user corrections from DB
 
 # Frontend (from /frontend)
 npm run dev          # Dev server on :3000
@@ -69,7 +77,18 @@ wallo/
 │   │   │   ├── router.py        # GET /transactions with pagination + filters
 │   │   │   ├── schemas.py       # TransactionResponse, TransactionList
 │   │   │   ├── models.py        # Transaction SQLAlchemy model
-│   │   │   ├── service.py       # Sync + query logic
+│   │   │   ├── service.py       # Sync + query + auto-categorization on sync
+│   │   │   └── __init__.py
+│   │   ├── categories/          # ML categorization domain
+│   │   │   ├── router.py        # GET/POST /categories, PATCH correction, POST retrain
+│   │   │   ├── schemas.py       # CategoryResponse, CategoryCreate, CorrectionResponse
+│   │   │   ├── models.py        # Category, CategoryCorrection SQLAlchemy models
+│   │   │   ├── merchant_mapping.py  # MerchantMapping model (learned merchant→category)
+│   │   │   ├── service.py       # 3-layer cascade: merchant_map → ML → threshold
+│   │   │   ├── seed.py          # 19 default system categories (idempotent)
+│   │   │   ├── text_cleaner.py  # Bank description normalizer + merchant key extractor
+│   │   │   ├── ml_categorizer.py    # TF-IDF + GradientBoosting pipeline
+│   │   │   ├── tasks.py         # retrain_model() sync fn (Celery wrapper commented out)
 │   │   │   └── __init__.py
 │   │   └── dashboard/           # Dashboard aggregation domain
 │   │       ├── router.py        # GET /dashboard (aggregated view)
@@ -79,6 +98,11 @@ wallo/
 │   ├── alembic/
 │   │   ├── env.py               # MUST import ALL models for autogenerate
 │   │   └── versions/
+│   ├── data/
+│   │   ├── training_data.csv    # 340-row base training dataset (19 categories)
+│   │   └── models/              # Trained joblib artefacts (gitignored)
+│   ├── scripts/
+│   │   └── train_base_model.py  # One-shot training script
 │   ├── keys/                    # Enable Banking .pem private keys (gitignored!)
 │   ├── tests/                   # Mirrors app/ structure
 │   ├── pyproject.toml
@@ -98,13 +122,15 @@ wallo/
 │   │   │       └── transactions/page.tsx
 │   │   ├── components/
 │   │   │   ├── ui/              # Primitives: Button, Input, Card, Skeleton
-│   │   │   └── features/        # Domain: AccountCard, TransactionRow, BankSelector
+│   │   │   └── features/        # Domain: AccountCard, TransactionRow, CategoryBadge
 │   │   ├── lib/
-│   │   │   ├── api.ts           # Typed fetch wrapper for FastAPI backend
+│   │   │   ├── api.ts           # Typed fetch wrapper (api, budgetApi, categoryApi)
 │   │   │   └── auth.ts          # Token storage, auth helpers
-│   │   ├── hooks/               # useAccounts, useTransactions, useDashboard
+│   │   ├── hooks/               # useAccounts, useTransactions, useCategories
 │   │   ├── providers/           # QueryClientProvider, AuthProvider
 │   │   └── types/               # Shared TypeScript interfaces matching backend schemas
+│   │       ├── index.ts         # Transaction, User, Dashboard, etc.
+│   │       └── categories.ts    # Category, TransactionWithCategory (canonical)
 │   ├── package.json
 │   ├── tailwind.config.ts
 │   └── tsconfig.json

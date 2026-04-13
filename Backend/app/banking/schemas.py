@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ASPSPResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     name: str
     country: str
     logo: str | None = None
@@ -16,6 +18,7 @@ class ASPSPResponse(BaseModel):
 class ConnectBankRequest(BaseModel):
     bank_name: str
     bank_country: str
+    redirect_url: str | None = None  # optional override (e.g. /settings/callback)
 
 
 class ConnectBankResponse(BaseModel):
@@ -49,4 +52,5 @@ class BankConnectionResponse(BaseModel):
     bank_logo: str | None
     status: str
     accounts_count: int = 0
+    last_synced_at: datetime | None = None
     created_at: datetime

@@ -30,27 +30,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-1 flex-col justify-center px-6 py-12 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h1 className="text-center text-3xl font-bold tracking-tight text-amber-600">
-          Wallo
-        </h1>
-        <h2 className="mt-6 text-center text-xl font-semibold text-gray-900">
-          Inicia sesion en tu cuenta
-        </h2>
-      </div>
+    <div className="flex min-h-full flex-1 flex-col items-center justify-center px-6 py-16 bg-[#faf9f8]">
+      <div className="w-full max-w-md rounded-3xl bg-white p-10 shadow-[0_20px_40px_rgba(48,51,51,0.08)]">
+        {/* Logo */}
+        <div className="mb-8 text-center">
+          <p className="text-3xl font-extrabold tracking-tight text-[#0060ad]">Wallo</p>
+          <p className="mt-1 text-sm text-[#5d605f]">Tus finanzas, bajo control.</p>
+        </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-sm">
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
+            <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Correo electronico
+            <label htmlFor="email" className="block text-sm font-semibold text-[#303333] mb-1.5">
+              Correo electrónico
             </label>
             <input
               id="email"
@@ -59,14 +54,14 @@ export default function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              className="block w-full rounded-xl bg-[#f3f4f3] px-4 py-3 text-sm text-[#303333] placeholder:text-[#5d605f]/60 outline-none ring-1 ring-transparent focus:ring-2 focus:ring-[#0060ad]/20 transition-all"
               placeholder="tu@email.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Contrasena
+            <label htmlFor="password" className="block text-sm font-semibold text-[#303333] mb-1.5">
+              Contraseña
             </label>
             <input
               id="password"
@@ -75,23 +70,23 @@ export default function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+              className="block w-full rounded-xl bg-[#f3f4f3] px-4 py-3 text-sm text-[#303333] placeholder:text-[#5d605f]/60 outline-none ring-1 ring-transparent focus:ring-2 focus:ring-[#0060ad]/20 transition-all"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="mt-2 w-full rounded-full bg-gradient-to-r from-[#0060ad] to-[#68abff] px-4 py-3 text-sm font-bold text-white shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {loading ? 'Iniciando sesion...' : 'Iniciar sesion'}
+            {loading ? 'Iniciando sesión…' : 'Iniciar sesión'}
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-gray-500">
-          No tienes cuenta?{' '}
-          <Link href="/register" className="font-semibold text-amber-600 hover:text-amber-500">
-            Registrate
+        <p className="mt-8 text-center text-sm text-[#5d605f]">
+          ¿No tienes cuenta?{' '}
+          <Link href="/register" className="font-semibold text-[#0060ad] hover:text-[#68abff] transition-colors">
+            Regístrate
           </Link>
         </p>
       </div>

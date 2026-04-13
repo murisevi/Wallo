@@ -1,11 +1,28 @@
+from __future__ import annotations
+
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, ForeignKey, Index, Numeric, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.categories.models import Category
 
 
 class Transaction(Base):
@@ -53,13 +70,38 @@ class Transaction(Base):
         String(10), nullable=False, default="BOOK", server_default="BOOK"
     )  # BOOK | PDNG
 
-    # Future ML placeholder — null in MVP
-    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now()
+    # Legacy string placeholder — column kept as-is in DB ("category")
+    category_text: Mapped[str | None] = mapped_column(
+        "category", String(50), nullable=True
     )
+
+    # Category FK + ML categorization fields
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    categorization_method: Mapped[str | None] = mapped_column(
+        String(20), nullable=True  # "merchant_map" | "ml_auto" | "ml_suggested" | "manual"
+    )
+    confidence_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True  # 0.0 – 1.0
+    )
+    is_manually_corrected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # ORM relationship (unidirectional: Transaction → Category)
+    # Named category_rel to avoid conflicting with the CategoryResponse
+    # schema field of the same logical name in TransactionResponse.
+    category_rel: Mapped[Category | None] = relationship("Category")
 
     # Non-unique index — partial unique constraint on
     # (account_id, entry_reference) WHERE entry_reference IS NOT NULL

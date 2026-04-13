@@ -13,13 +13,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.banking.client import EnableBankingClient
 from app.banking.models import BankAccount, BankConnection
-from app.banking.schemas import BankAccountResponse
+from app.banking.schemas import BankAccountResponse, BankConnectionResponse
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 # Balance type priority: best → worst
 _BALANCE_PRIORITY = ["ITAV", "XPCD", "CLBD"]
+
+# Banks that are not directly available in the Enable Banking SANDBOX are mapped
+# to a sandbox ASPSP that can process the OAuth flow on their behalf.
+# This map is ONLY applied when ENABLE_BANKING_ENVIRONMENT=sandbox.
+# In production every bank name is sent as-is to Enable Banking.
+# Key: (display_name_lower, country_upper)  →  (aspsp_name, aspsp_country)
+_SANDBOX_ASPSP_MAP: dict[tuple[str, str], tuple[str, str]] = {
+    ("banco santander", "ES"): ("Mock ASPSP", "ES"),
+}
 
 
 def _pick_balance(
@@ -51,28 +60,82 @@ class BankingService:
 
     # ── Connection lifecycle ──────────────────────────────────────────────────
 
+    async def get_connections(
+        self, user_id: uuid.UUID
+    ) -> list[BankConnectionResponse]:
+        """Return all non-disconnected bank connections for a user, with account stats."""
+        conn_result = await self._db.execute(
+            select(BankConnection).where(
+                BankConnection.user_id == user_id,
+                BankConnection.status != "disconnected",
+            )
+        )
+        connections = conn_result.scalars().all()
+
+        responses: list[BankConnectionResponse] = []
+        for conn in connections:
+            acc_result = await self._db.execute(
+                select(BankAccount).where(BankAccount.connection_id == conn.id)
+            )
+            accounts = acc_result.scalars().all()
+            last_synced_at = max(
+                (a.last_synced_at for a in accounts if a.last_synced_at),
+                default=None,
+            )
+            responses.append(
+                BankConnectionResponse(
+                    id=conn.id,
+                    bank_name=conn.bank_name,
+                    bank_country=conn.bank_country,
+                    bank_logo=conn.bank_logo,
+                    status=conn.status,
+                    accounts_count=len(accounts),
+                    last_synced_at=last_synced_at,
+                    created_at=conn.created_at,
+                )
+            )
+        return responses
+
     async def initiate_connection(
         self,
         user_id: uuid.UUID,
         bank_name: str,
         bank_country: str,
+        redirect_url: str | None = None,
     ) -> dict[str, str]:
         """Start PSD2 authorization. Persists a pending BankConnection.
 
         Returns:
             {"url": "...", "authorization_id": "..."}
         """
-        redirect_url = settings.enable_banking_redirect_url
+        effective_redirect_url = redirect_url or settings.enable_banking_redirect_url
+        country_upper = bank_country.upper()
+
+        # Resolve sandbox proxy: some banks are not in the sandbox catalogue but
+        # can be tested via Mock ASPSP.  We keep the user-facing name in the DB
+        # and only use the proxy name for the Enable Banking API call.
+        is_sandbox = settings.enable_banking_environment.lower() == "sandbox"
+        aspsp_key = (bank_name.lower(), country_upper)
+        if is_sandbox and aspsp_key in _SANDBOX_ASPSP_MAP:
+            eb_name, eb_country = _SANDBOX_ASPSP_MAP[aspsp_key]
+            logger.info(
+                "Sandbox proxy: routing '%s' → '%s' for Enable Banking API call",
+                bank_name,
+                eb_name,
+            )
+        else:
+            eb_name, eb_country = bank_name, country_upper
+
         result = await self._eb.start_authorization(
-            bank_name=bank_name,
-            bank_country=bank_country.upper(),
-            redirect_url=redirect_url,
+            bank_name=eb_name,
+            bank_country=eb_country,
+            redirect_url=effective_redirect_url,
             state=str(user_id),
         )
         connection = BankConnection(
             user_id=user_id,
-            bank_name=bank_name,
-            bank_country=bank_country.upper(),
+            bank_name=bank_name,        # store display name, not proxy name
+            bank_country=country_upper,
             authorization_id=result["authorization_id"],
             status="pending",
         )
@@ -209,9 +272,18 @@ class BankingService:
     # ── Balance sync ──────────────────────────────────────────────────────────
 
     async def sync_balances(self, user_id: uuid.UUID) -> None:
-        """Re-fetch and store latest balances for all of a user's accounts."""
+        """Re-fetch and store latest balances for all active accounts.
+
+        Kept for backwards compatibility — prefer ``sync_all`` which also
+        refreshes transactions.
+        """
         result = await self._db.execute(
-            select(BankAccount).where(BankAccount.user_id == user_id)
+            select(BankAccount)
+            .join(BankConnection, BankAccount.connection_id == BankConnection.id)
+            .where(
+                BankAccount.user_id == user_id,
+                BankConnection.status != "disconnected",
+            )
         )
         accounts = result.scalars().all()
         for account in accounts:
@@ -219,10 +291,74 @@ class BankingService:
         await self._db.flush()
         logger.info("Synced balances for user %s (%d accounts)", user_id, len(accounts))
 
-    async def _fetch_and_store_balance(self, account: BankAccount) -> None:
+    async def sync_all(
+        self,
+        user_id: uuid.UUID,
+        psu_ip: str | None = None,
+        psu_user_agent: str | None = None,
+    ) -> None:
+        """Refresh balances AND transactions for all active accounts.
+
+        Pass ``psu_ip`` and ``psu_user_agent`` when the sync is triggered
+        explicitly by the user — Enable Banking lifts the 4/day background
+        fetch rate limit when PSU headers are present.
+        """
+        from app.transactions.service import sync_transactions
+
+        result = await self._db.execute(
+            select(BankAccount)
+            .join(BankConnection, BankAccount.connection_id == BankConnection.id)
+            .where(
+                BankAccount.user_id == user_id,
+                BankConnection.status != "disconnected",
+            )
+        )
+        accounts = result.scalars().all()
+
+        for account in accounts:
+            await self._fetch_and_store_balance(
+                account, psu_ip=psu_ip, psu_user_agent=psu_user_agent
+            )
+            try:
+                n = await sync_transactions(
+                    self._db,
+                    self._eb,
+                    account,
+                    psu_ip=psu_ip,
+                    psu_user_agent=psu_user_agent,
+                )
+                logger.info(
+                    "Transaction sync for account %s: %d new",
+                    account.external_uid,
+                    n,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to sync transactions for account %s — skipping",
+                    account.external_uid,
+                    exc_info=True,
+                )
+
+        await self._db.flush()
+        logger.info(
+            "Full sync (balances + transactions) for user %s (%d accounts)",
+            user_id,
+            len(accounts),
+        )
+
+    async def _fetch_and_store_balance(
+        self,
+        account: BankAccount,
+        psu_ip: str | None = None,
+        psu_user_agent: str | None = None,
+    ) -> None:
         """Fetch balances from Enable Banking and update the account row."""
         try:
-            balances = await self._eb.get_account_balances(account.external_uid)
+            balances = await self._eb.get_account_balances(
+                account.external_uid,
+                psu_ip=psu_ip,
+                psu_user_agent=psu_user_agent,
+            )
             amount, bal_type = _pick_balance(balances)
             account.balance_amount = amount
             account.balance_type = bal_type
@@ -237,9 +373,14 @@ class BankingService:
     # ── Account queries ───────────────────────────────────────────────────────
 
     async def get_user_accounts(self, user_id: uuid.UUID) -> list[BankAccountResponse]:
-        """Return all BankAccounts belonging to a user."""
+        """Return all BankAccounts belonging to a user on active connections."""
         result = await self._db.execute(
-            select(BankAccount).where(BankAccount.user_id == user_id)
+            select(BankAccount)
+            .join(BankConnection, BankAccount.connection_id == BankConnection.id)
+            .where(
+                BankAccount.user_id == user_id,
+                BankConnection.status != "disconnected",
+            )
         )
         accounts = result.scalars().all()
         return [BankAccountResponse.model_validate(a) for a in accounts]
@@ -249,7 +390,7 @@ class BankingService:
     async def disconnect_bank(
         self, user_id: uuid.UUID, connection_id: uuid.UUID
     ) -> None:
-        """Delete a BankConnection (cascades to BankAccounts)."""
+        """Soft-delete a BankConnection (sets status=disconnected, preserves history)."""
         result = await self._db.execute(
             select(BankConnection).where(
                 BankConnection.id == connection_id,
@@ -262,8 +403,8 @@ class BankingService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Bank connection not found",
             )
-        await self._db.delete(connection)
+        connection.status = "disconnected"
         await self._db.flush()
         logger.info(
-            "Disconnected bank connection %s for user %s", connection_id, user_id
+            "Soft-disconnected bank connection %s for user %s", connection_id, user_id
         )

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(.venv/Scripts/python -c ':*)",
+      "WebSearch"
     ]
   }
 }

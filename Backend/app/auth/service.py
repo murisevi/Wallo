@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -7,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
-from app.auth.schemas import TokenResponse, UserCreate
+from app.auth.schemas import TokenResponse, UserCreate, UserProfileResponse, UserProfileUpdate
 from app.config import settings
 
 
@@ -81,3 +82,39 @@ async def authenticate_user(
 
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token)
+
+
+async def get_user_profile(db: AsyncSession, user_id: uuid.UUID) -> UserProfileResponse:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return UserProfileResponse.model_validate(user)
+
+
+async def update_user_profile(
+    db: AsyncSession, user_id: uuid.UUID, data: UserProfileUpdate
+) -> UserProfileResponse:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if data.email is not None and data.email != user.email:
+        conflict = await db.execute(select(User).where(User.email == data.email))
+        if conflict.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use",
+            )
+        user.email = data.email
+
+    if data.full_name is not None:
+        user.name = data.full_name
+
+    if data.currency is not None:
+        user.currency = data.currency
+
+    await db.flush()
+    await db.refresh(user)
+    return UserProfileResponse.model_validate(user)

@@ -19,22 +19,22 @@ export function BalanceDisplay({ amount, currency, accountCount }: BalanceDispla
   const formatted = formatCurrency(amount, currency);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 px-6 py-10 text-center shadow-lg sm:py-14">
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 px-8 py-12 text-center shadow-[0_8px_32px_rgba(245,158,11,0.25)]">
       {/* Decorative rings */}
-      <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/5" />
-      <div className="pointer-events-none absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-white/5" />
+      <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-80 w-80 rounded-full bg-white/5" />
 
-      <p className="relative text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
-        Dinero Libre Disponible
+      <p className="relative text-xs font-bold uppercase tracking-[0.22em] text-amber-100">
+        Dinero libre disponible
       </p>
 
-      <p className="relative mt-4 text-5xl font-extrabold tabular-nums text-white drop-shadow-sm sm:text-6xl lg:text-7xl">
+      <p className="relative mt-4 text-6xl font-extrabold tabular-nums text-white drop-shadow-sm lg:text-7xl">
         {formatted}
       </p>
 
       <p className="relative mt-4 text-sm text-amber-200">
         {accountCount === 0
-          ? 'Sin cuentas conectadas'
+          ? 'Conecta tu banco para ver tus saldos'
           : accountCount === 1
             ? 'En 1 cuenta conectada'
             : `En ${accountCount} cuentas conectadas`}

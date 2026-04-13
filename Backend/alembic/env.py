@@ -13,6 +13,9 @@ from app.database import Base
 # ---------------------------------------------------------------------------
 from app.auth.models import User  # noqa: F401
 from app.banking.models import BankAccount, BankConnection  # noqa: F401
+from app.budgets.models import Budget  # noqa: F401
+from app.categories.models import Category, CategoryCorrection  # noqa: F401
+from app.categories.merchant_mapping import MerchantMapping  # noqa: F401
 from app.transactions.models import Transaction  # noqa: F401
 
 # ---------------------------------------------------------------------------

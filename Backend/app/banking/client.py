@@ -38,6 +38,23 @@ Balance = dict[str, Any]
 Transaction = dict[str, Any]
 
 
+def _build_psu_headers(
+    psu_ip: str | None,
+    psu_user_agent: str | None,
+) -> dict[str, str]:
+    """Build PSU headers for Enable Banking requests triggered by an active user.
+
+    When both headers are present the 4/day background-fetch rate limit is
+    bypassed entirely.  Only include real values — never send empty strings.
+    """
+    headers: dict[str, str] = {}
+    if psu_ip:
+        headers["Psu-Ip-Address"] = psu_ip
+    if psu_user_agent:
+        headers["Psu-User-Agent"] = psu_user_agent
+    return headers
+
+
 def _parse_amount(raw: dict[str, str]) -> dict[str, Decimal | str]:
     """Convert Enable Banking amount {amount: str, currency: str} → Decimal."""
     return {
@@ -118,8 +135,14 @@ class EnableBankingClient:
         *,
         params: dict[str, str] | None = None,
         json: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Any:
-        """Send a request with JWT auth, retries and error handling."""
+        """Send a request with JWT auth, retries and error handling.
+
+        Pass ``extra_headers`` to include PSU headers (Psu-Ip-Address,
+        Psu-User-Agent) — required to bypass the 4/day background fetch
+        rate limit when the request is triggered by an active user.
+        """
         last_exc: Exception | None = None
         backoff = INITIAL_BACKOFF_S
 
@@ -131,10 +154,13 @@ class EnableBankingClient:
                 attempt,
                 MAX_RETRIES,
             )
+            headers = self._auth_headers()
+            if extra_headers:
+                headers.update(extra_headers)
             resp = await self._http.request(
                 method,
                 path,
-                headers=self._auth_headers(),
+                headers=headers,
                 params=params,
                 json=json,
             )
@@ -304,14 +330,25 @@ class EnableBankingClient:
         }
 
     async def get_account_balances(
-        self, account_uid: str
+        self,
+        account_uid: str,
+        psu_ip: str | None = None,
+        psu_user_agent: str | None = None,
     ) -> list[dict[str, Decimal | str | None]]:
         """GET /accounts/{uid}/balances — fetch balances for one account.
+
+        Pass ``psu_ip`` and ``psu_user_agent`` when the request is triggered
+        by an active user to bypass the 4/day background fetch rate limit.
 
         Returns:
             List of balance dicts with amount (Decimal), currency, balance_type.
         """
-        data = await self._request("GET", f"/accounts/{account_uid}/balances")
+        psu_headers = _build_psu_headers(psu_ip, psu_user_agent)
+        data = await self._request(
+            "GET",
+            f"/accounts/{account_uid}/balances",
+            extra_headers=psu_headers or None,
+        )
 
         balances = []
         for bal in data.get("balances", []):
@@ -336,8 +373,13 @@ class EnableBankingClient:
         account_uid: str,
         date_from: date | None = None,
         continuation_key: str | None = None,
+        psu_ip: str | None = None,
+        psu_user_agent: str | None = None,
     ) -> dict[str, Any]:
         """GET /accounts/{uid}/transactions — fetch one page of transactions.
+
+        Pass ``psu_ip`` and ``psu_user_agent`` when the request is triggered
+        by an active user to bypass the 4/day background fetch rate limit.
 
         Returns:
             {
@@ -351,8 +393,12 @@ class EnableBankingClient:
         if continuation_key is not None:
             params["continuation_key"] = continuation_key
 
+        psu_headers = _build_psu_headers(psu_ip, psu_user_agent)
         data = await self._request(
-            "GET", f"/accounts/{account_uid}/transactions", params=params
+            "GET",
+            f"/accounts/{account_uid}/transactions",
+            params=params,
+            extra_headers=psu_headers or None,
         )
 
         transactions = []
@@ -389,11 +435,16 @@ class EnableBankingClient:
         self,
         account_uid: str,
         date_from: date | None = None,
+        psu_ip: str | None = None,
+        psu_user_agent: str | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch ALL transactions for an account, handling pagination.
 
         Some banks return empty transaction lists with a non-null
         continuation_key — we keep fetching until the key is None.
+
+        Pass ``psu_ip`` and ``psu_user_agent`` when the request is triggered
+        by an active user to bypass the 4/day background fetch rate limit.
         """
         all_transactions: list[dict[str, Any]] = []
         continuation_key: str | None = None
@@ -403,6 +454,8 @@ class EnableBankingClient:
                 account_uid,
                 date_from=date_from,
                 continuation_key=continuation_key,
+                psu_ip=psu_ip,
+                psu_user_agent=psu_user_agent,
             )
             all_transactions.extend(page["transactions"])
             continuation_key = page["continuation_key"]

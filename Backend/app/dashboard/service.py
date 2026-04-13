@@ -39,7 +39,10 @@ class DashboardService:
                 BankConnection.bank_logo,
             )
             .join(BankConnection, BankAccount.connection_id == BankConnection.id)
-            .where(BankAccount.user_id == user_id)
+            .where(
+                BankAccount.user_id == user_id,
+                BankConnection.status != "disconnected",
+            )
             .order_by(BankConnection.bank_name, BankAccount.name)
         )
         rows = (await self._db.execute(stmt)).all()
@@ -76,7 +79,11 @@ class DashboardService:
         txn_stmt = (
             select(Transaction, BankAccount.iban)
             .join(BankAccount, Transaction.account_id == BankAccount.id)
-            .where(Transaction.user_id == user_id)
+            .join(BankConnection, BankAccount.connection_id == BankConnection.id)
+            .where(
+                Transaction.user_id == user_id,
+                BankConnection.status != "disconnected",
+            )
             .order_by(Transaction.date.desc(), Transaction.created_at.desc())
             .limit(5)
         )

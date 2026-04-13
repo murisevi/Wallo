@@ -44,7 +44,10 @@ services:
     env_file:
       - .env
     volumes:
-      - ./Backend:/app
+      - ./backend:/app
+      # Mount keys/ explicitly so the .pem file is always available inside the container
+      # even if the top-level volume mount is overridden in production.
+      - ./backend/keys:/app/keys:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://wallo:wallo@db:5432/wallo
       - REDIS_URL=redis://redis:6379/0
@@ -56,12 +59,33 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "3000:3000"
+    # Port 3001 is only internal — nginx handles the external 3000 (HTTPS)
+    expose:
+      - "3001"
     env_file:
       - .env
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "3000:3000"
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@wallo.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
 
 volumes:
   postgres_data:

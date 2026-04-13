@@ -1,4 +1,4 @@
-"""Transactions API router — paginated list with optional filters."""
+"""Transactions API router — paginated list with optional filters + category PATCH."""
 
 from __future__ import annotations
 
@@ -9,8 +9,12 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.dependencies import CurrentUser, DbSession
-from app.transactions.schemas import TransactionListResponse
-from app.transactions.service import get_transactions
+from app.transactions.schemas import (
+    TransactionCategoryUpdate,
+    TransactionListResponse,
+    TransactionResponse,
+)
+from app.transactions.service import get_transactions, update_transaction_category
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -35,11 +39,21 @@ async def list_transactions(
     date_to: Annotated[
         date | None, Query(description="Latest booking date (inclusive)")
     ] = None,
+    category_id: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Filter by category UUID. "
+                "Use the special value 'uncategorized' to return only transactions "
+                "without a category."
+            )
+        ),
+    ] = None,
 ) -> TransactionListResponse:
     """List transactions for the authenticated user.
 
-    Supports pagination and optional filtering by account, date range, and
-    free-text search across description and counterparty names.
+    Supports pagination and optional filtering by account, date range,
+    free-text search, and category.
     """
     return await get_transactions(
         db=db,
@@ -50,4 +64,24 @@ async def list_transactions(
         search=search,
         date_from=date_from,
         date_to=date_to,
+        category_id=category_id,
+    )
+
+
+@router.patch("/{transaction_id}", response_model=TransactionResponse)
+async def patch_transaction_category(
+    transaction_id: uuid.UUID,
+    body: TransactionCategoryUpdate,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> TransactionResponse:
+    """Update the category of a single transaction.
+
+    Pass ``category_id: null`` to clear the current category.
+    """
+    return await update_transaction_category(
+        db=db,
+        user_id=current_user.id,
+        transaction_id=transaction_id,
+        data=body,
     )

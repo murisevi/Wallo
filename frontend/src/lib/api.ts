@@ -1,3 +1,6 @@
+import type { Budget, BudgetCreate, BudgetSummary, BudgetUpdate } from '@/types/budget';
+import type { Category, CategoryCorrectionResponse } from '@/types/categories';
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
 
 class ApiError extends Error {
@@ -70,8 +73,83 @@ export const api = {
     });
   },
 
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'PATCH',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  },
+
   delete<T>(path: string): Promise<T> {
     return request<T>(path, { method: 'DELETE' });
+  },
+
+  async getBlob(path: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${BASE_URL}${path}`, { method: 'GET', headers });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, (body as { detail?: string }).detail ?? res.statusText);
+    }
+    return res.blob();
+  },
+};
+
+// ─── Budget endpoints ────────────────────────────────────────────────────────
+
+export const budgetApi = {
+  getCategories(): Promise<Category[]> {
+    return api.get<Category[]>('/budgets/categories');
+  },
+
+  getSummary(month: number, year: number): Promise<BudgetSummary> {
+    return api.get<BudgetSummary>(`/budgets/?month=${month}&year=${year}`);
+  },
+
+  createBudget(data: BudgetCreate): Promise<Budget> {
+    return api.post<Budget>('/budgets/', data);
+  },
+
+  updateBudget(id: string, data: BudgetUpdate): Promise<Budget> {
+    return api.put<Budget>(`/budgets/${id}`, data);
+  },
+
+  deleteBudget(id: string): Promise<void> {
+    return api.delete<void>(`/budgets/${id}`);
+  },
+};
+
+// ─── Category endpoints ──────────────────────────────────────────────────────
+
+export const categoryApi = {
+  /** List all system categories + the authenticated user's custom ones. */
+  getCategories(): Promise<Category[]> {
+    return api.get<Category[]>('/categories/');
+  },
+
+  /** Create a custom category owned by the current user. */
+  createCategory(data: {
+    name: string;
+    icon: string;
+    color: string;
+    type: 'expense' | 'income';
+  }): Promise<Category> {
+    return api.post<Category>('/categories/', data);
+  },
+
+  /** Submit an active-learning correction for a transaction's category. */
+  correctTransactionCategory(
+    transactionId: string,
+    categoryId: string,
+  ): Promise<CategoryCorrectionResponse> {
+    return api.patch<CategoryCorrectionResponse>(
+      `/categories/transactions/${transactionId}/category`,
+      { category_id: categoryId },
+    );
   },
 };
 
