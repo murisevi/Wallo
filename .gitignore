@@ -60,3 +60,7 @@ logs/
 
 # Alembic (keep versions but ignore local pyc)
 backend/alembic/versions/__pycache__/
+
+# ML model artefacts — binary files, regenerate with scripts/train_base_model.py
+Backend/data/models/
+backend/data/models/
