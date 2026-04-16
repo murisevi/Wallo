@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, PlusCircle, Calendar, TrendingDown } from 'lucide-react';
+import { RefreshCw, PlusCircle, Calendar, TrendingDown, CheckCircle, XCircle, X, CreditCard } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
 import { useDashboard } from '@/hooks/useDashboard';
 import { TransactionRow } from '@/components/features/TransactionRow';
-import { api } from '@/lib/api';
+import { api, recurringApi } from '@/lib/api';
+import type { RecurringCharge } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Skeletons
@@ -47,6 +48,32 @@ export default function DashboardPage() {
   const { data, isLoading, isError, refetch, isFetching } = useDashboard();
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [installmentTarget, setInstallmentTarget] = useState<string | null>(null);
+  const [installmentInput, setInstallmentInput] = useState('');
+
+  async function handleConfirm(id: string) {
+    await recurringApi.confirm(id);
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  }
+
+  async function handleDismiss(id: string) {
+    await recurringApi.dismiss(id);
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  }
+
+  async function handleDeny(id: string) {
+    await recurringApi.delete(id);
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  }
+
+  async function handleSetInstallment(id: string) {
+    const total = parseInt(installmentInput, 10);
+    if (!total || total < 1) return;
+    await recurringApi.setInstallment(id, total);
+    setInstallmentTarget(null);
+    setInstallmentInput('');
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  }
 
   const firstName = user?.name?.split(' ')[0] ?? '';
   const accountCount = data?.accounts.length ?? 0;
@@ -218,12 +245,143 @@ export default function DashboardPage() {
           {/* Próximos cobros */}
           <div className="rounded-2xl bg-white p-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
             <h2 className="mb-5 text-base font-bold text-[#303333]">Próximos cobros</h2>
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f3f4f3]">
-                <Calendar size={22} className="text-[#5d605f]" />
+
+            {(data?.upcoming_charges.length ?? 0) === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f3f4f3]">
+                  <Calendar size={22} className="text-[#5d605f]" />
+                </div>
+                <p className="mt-3 text-sm text-[#5d605f]">No hay cobros próximos detectados.</p>
               </div>
-              <p className="mt-3 text-sm text-[#5d605f]">No hay cobros próximos detectados.</p>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {data?.upcoming_charges.map((charge: RecurringCharge) => (
+                  <div
+                    key={charge.id}
+                    className="rounded-xl border border-[#f0f1f0] p-3"
+                  >
+                    {/* Row: name + date + amount */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <CreditCard size={13} className="shrink-0 text-[#5d605f]" />
+                          <span className="truncate text-sm font-semibold text-[#303333]">
+                            {charge.display_name}
+                          </span>
+                          {charge.status === 'possible' ? (
+                            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Posible
+                            </span>
+                          ) : (
+                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
+                              Confirmado
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-[#5d605f]">
+                          {new Date(charge.next_predicted_date).toLocaleDateString('es-ES', {
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                          {' · '}
+                          {charge.periodicity === 'MONTHLY'
+                            ? 'mensual'
+                            : charge.periodicity === 'WEEKLY'
+                              ? 'semanal'
+                              : 'anual'}
+                        </p>
+                        {charge.is_installment &&
+                          charge.installment_total != null &&
+                          charge.installment_paid != null && (
+                            <p className="mt-0.5 text-xs font-medium text-[#0060ad]">
+                              {charge.installment_paid} / {charge.installment_total} pagos
+                            </p>
+                          )}
+                      </div>
+                      <span className="shrink-0 text-sm font-bold tabular-nums text-[#303333]">
+                        {new Intl.NumberFormat('es-ES', {
+                          style: 'currency',
+                          currency: charge.currency,
+                        }).format(parseFloat(charge.amount))}
+                      </span>
+                    </div>
+
+                    {/* Installment input */}
+                    {installmentTarget === charge.id && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="Nº de plazos"
+                          value={installmentInput}
+                          onChange={(e) => setInstallmentInput(e.target.value)}
+                          className="w-28 rounded-lg border border-[#d0d1d0] px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0060ad]"
+                        />
+                        <button
+                          onClick={() => handleSetInstallment(charge.id)}
+                          className="rounded-lg bg-[#0060ad] px-2 py-1 text-xs font-semibold text-white hover:opacity-90"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setInstallmentTarget(null);
+                            setInstallmentInput('');
+                          }}
+                          className="text-xs text-[#5d605f] hover:text-[#303333]"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    {!charge.is_installment && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {charge.status === 'possible' && (
+                          <>
+                            <button
+                              onClick={() => handleConfirm(charge.id)}
+                              className="flex items-center gap-1 rounded-lg bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
+                            >
+                              <CheckCircle size={11} />
+                              Confirmar
+                            </button>
+                            <button
+                              onClick={() => handleDeny(charge.id)}
+                              className="flex items-center gap-1 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100 transition-colors"
+                            >
+                              <XCircle size={11} />
+                              No es recurrente
+                            </button>
+                          </>
+                        )}
+                        {charge.status === 'confirmed' && (
+                          <>
+                            <button
+                              onClick={() => handleDismiss(charge.id)}
+                              className="flex items-center gap-1 rounded-lg bg-[#f3f4f3] px-2 py-1 text-xs font-semibold text-[#5d605f] hover:bg-[#edeeed] transition-colors"
+                            >
+                              <X size={11} />
+                              Me he dado de baja
+                            </button>
+                            {installmentTarget !== charge.id && (
+                              <button
+                                onClick={() => setInstallmentTarget(charge.id)}
+                                className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                              >
+                                <CreditCard size={11} />
+                                Es un plazo
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
