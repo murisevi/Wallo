@@ -89,8 +89,10 @@ from app.banking.router import router as banking_router  # noqa: E402
 from app.budgets.router import router as budgets_router  # noqa: E402
 from app.categories.router import router as categories_router  # noqa: E402
 from app.dashboard.router import router as dashboard_router  # noqa: E402
+from app.recurring_charges.router import (
+    router as recurring_charges_router,
+)
 from app.reports.router import router as reports_router  # noqa: E402
-from app.recurring_charges.router import router as recurring_charges_router  # noqa: E402
 from app.transactions.router import router as transactions_router  # noqa: E402
 
 app.include_router(auth_router, prefix="/api/v1")

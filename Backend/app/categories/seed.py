@@ -16,56 +16,56 @@ DEFAULT_CATEGORIES: list[dict] = [
         "icon": "shopping-cart",
         "color": "#22C55E",
         "type": "expense",
-    },  # noqa: E501
+    },
     {
         "name": "Restaurantes y Bares",
         "icon": "utensils",
         "color": "#F97316",
         "type": "expense",
-    },  # noqa: E501
-    {"name": "Transporte", "icon": "car", "color": "#3B82F6", "type": "expense"},  # noqa: E501
-    {"name": "Vivienda", "icon": "home", "color": "#8B5CF6", "type": "expense"},  # noqa: E501
-    {"name": "Suministros", "icon": "zap", "color": "#EAB308", "type": "expense"},  # noqa: E501
-    {"name": "Salud", "icon": "heart-pulse", "color": "#EF4444", "type": "expense"},  # noqa: E501
-    {"name": "Ocio", "icon": "gamepad-2", "color": "#EC4899", "type": "expense"},  # noqa: E501
-    {"name": "Ropa", "icon": "shirt", "color": "#A855F7", "type": "expense"},  # noqa: E501
+    },
+    {"name": "Transporte", "icon": "car", "color": "#3B82F6", "type": "expense"},
+    {"name": "Vivienda", "icon": "home", "color": "#8B5CF6", "type": "expense"},
+    {"name": "Suministros", "icon": "zap", "color": "#EAB308", "type": "expense"},
+    {"name": "Salud", "icon": "heart-pulse", "color": "#EF4444", "type": "expense"},
+    {"name": "Ocio", "icon": "gamepad-2", "color": "#EC4899", "type": "expense"},
+    {"name": "Ropa", "icon": "shirt", "color": "#A855F7", "type": "expense"},
     {
         "name": "Educación",
         "icon": "graduation-cap",
         "color": "#06B6D4",
         "type": "expense",
-    },  # noqa: E501
-    {"name": "Suscripciones", "icon": "repeat", "color": "#F59E0B", "type": "expense"},  # noqa: E501
-    {"name": "Seguros", "icon": "shield", "color": "#64748B", "type": "expense"},  # noqa: E501
-    {"name": "Mascotas", "icon": "dog", "color": "#D946EF", "type": "expense"},  # noqa: E501
-    {"name": "Regalos", "icon": "gift", "color": "#F43F5E", "type": "expense"},  # noqa: E501
+    },
+    {"name": "Suscripciones", "icon": "repeat", "color": "#F59E0B", "type": "expense"},
+    {"name": "Seguros", "icon": "shield", "color": "#64748B", "type": "expense"},
+    {"name": "Mascotas", "icon": "dog", "color": "#D946EF", "type": "expense"},
+    {"name": "Regalos", "icon": "gift", "color": "#F43F5E", "type": "expense"},
     {
         "name": "Otros gastos",
         "icon": "circle-dot",
         "color": "#6B7280",
         "type": "expense",
-    },  # noqa: E501
+    },
     # --- INGRESOS (5) ------------------------------------------------------
-    {"name": "Nómina", "icon": "banknote", "color": "#10B981", "type": "income"},  # noqa: E501
-    {"name": "Freelance", "icon": "laptop", "color": "#14B8A6", "type": "income"},  # noqa: E501
+    {"name": "Nómina", "icon": "banknote", "color": "#10B981", "type": "income"},
+    {"name": "Freelance", "icon": "laptop", "color": "#14B8A6", "type": "income"},
     {
         "name": "Transferencias recibidas",
         "icon": "arrow-down-left",
         "color": "#0EA5E9",
         "type": "income",
-    },  # noqa: E501
+    },
     {
         "name": "Devoluciones",
         "icon": "rotate-ccw",
         "color": "#84CC16",
         "type": "income",
-    },  # noqa: E501
+    },
     {
         "name": "Otros ingresos",
         "icon": "plus-circle",
         "color": "#6B7280",
         "type": "income",
-    },  # noqa: E501
+    },
 ]
 
 

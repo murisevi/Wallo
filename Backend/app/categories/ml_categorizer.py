@@ -146,7 +146,7 @@ class TransactionCategorizer:
                     )
                     calibrated.fit(X, y)
                 break
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("Calibration with cv=%s failed (%s), trying fallback", cv, exc)
         else:
             # Should never reach here, but satisfy mypy

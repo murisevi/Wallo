@@ -8,7 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
-from app.auth.schemas import TokenResponse, UserCreate, UserProfileResponse, UserProfileUpdate
+from app.auth.schemas import (
+    TokenResponse,
+    UserCreate,
+    UserProfileResponse,
+    UserProfileUpdate,
+)
 from app.config import settings
 
 
