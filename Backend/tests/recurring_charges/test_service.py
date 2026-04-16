@@ -12,9 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
 from app.banking.models import BankAccount, BankConnection
-from app.categories.models import Category
-from app.recurring_charges.models import RecurringCharge
 from app.recurring_charges import service as svc
+from app.recurring_charges.models import RecurringCharge
 from app.transactions.models import Transaction
 from tests.conftest import TestSessionLocal
 
@@ -31,7 +30,7 @@ async def user(db: AsyncSession) -> User:
     u = User(
         email=f"rc-test-{uuid.uuid4()}@example.com",
         name="RC Test User",
-        hashed_password="hashed",
+        hashed_password="hashed",  # noqa: S106
     )
     db.add(u)
     await db.flush()
@@ -53,7 +52,9 @@ async def connection(db: AsyncSession, user: User) -> BankConnection:
 
 
 @pytest.fixture
-async def account(db: AsyncSession, user: User, connection: BankConnection) -> BankAccount:
+async def account(
+    db: AsyncSession, user: User, connection: BankConnection
+) -> BankAccount:
     acc = BankAccount(
         connection_id=connection.id,
         user_id=user.id,
@@ -66,7 +67,13 @@ async def account(db: AsyncSession, user: User, connection: BankConnection) -> B
     return acc
 
 
-def make_txn(account: BankAccount, user: User, d: date, amount: str = "-9.99", description: str = "NETFLIX") -> Transaction:
+def make_txn(
+    account: BankAccount,
+    user: User,
+    d: date,
+    amount: str = "-9.99",
+    description: str = "NETFLIX",
+) -> Transaction:
     return Transaction(
         account_id=account.id,
         user_id=user.id,
@@ -109,8 +116,7 @@ class TestDetectAndUpsert:
     ):
         """Four monthly transactions → status confirmed."""
         txns = [
-            make_txn(account, user, BASE + timedelta(days=30 * i))
-            for i in range(4)
+            make_txn(account, user, BASE + timedelta(days=30 * i)) for i in range(4)
         ]
         for t in txns:
             db.add(t)
@@ -144,8 +150,7 @@ class TestDetectAndUpsert:
 
         # Add more transactions
         txns = [
-            make_txn(account, user, BASE + timedelta(days=30 * i))
-            for i in range(4)
+            make_txn(account, user, BASE + timedelta(days=30 * i)) for i in range(4)
         ]
         for t in txns:
             db.add(t)
@@ -235,7 +240,8 @@ class TestInstallment:
         assert updated is not None
         assert updated.is_installment is True
         assert updated.installment_total == 12
-        assert updated.installment_paid == 3  # occurrence_count becomes installment_paid
+        # occurrence_count becomes installment_paid
+        assert updated.installment_paid == 3
 
 
 class TestDelete:

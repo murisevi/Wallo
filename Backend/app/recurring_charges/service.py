@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_, select
@@ -15,7 +14,6 @@ from app.recurring_charges.detector import detect_recurring
 from app.recurring_charges.models import RecurringCharge
 from app.recurring_charges.schemas import RecurringChargeResponse
 from app.transactions.models import Transaction
-
 
 # ---------------------------------------------------------------------------
 # Detection
@@ -48,7 +46,9 @@ async def detect_and_upsert(db: AsyncSession, user_id: uuid.UUID) -> None:
         Category.user_id.is_(None),
         Category.is_custom.is_(False),
     )
-    sub_category_id: uuid.UUID | None = (await db.execute(sub_stmt)).scalar_one_or_none()
+    sub_category_id: uuid.UUID | None = (
+        await db.execute(sub_stmt)
+    ).scalar_one_or_none()
 
     # Fetch all user debit transactions with a usable text field
     txn_stmt = select(Transaction).where(
@@ -72,18 +72,22 @@ async def detect_and_upsert(db: AsyncSession, user_id: uuid.UUID) -> None:
         display_name = cleaned.title() if cleaned else merchant_key.title()
         is_sub = sub_category_id is not None and txn.category_id == sub_category_id
         tuples.append(
-            (merchant_key, display_name, abs(txn.amount), txn.currency, txn.date, is_sub)
+            (
+                merchant_key,
+                display_name,
+                abs(txn.amount),
+                txn.currency,
+                txn.date,
+                is_sub,
+            )
         )
 
     detected = detect_recurring(tuples)
 
     # Load all existing charges for this user (including dismissed)
-    existing_stmt = select(RecurringCharge).where(
-        RecurringCharge.user_id == user_id
-    )
+    existing_stmt = select(RecurringCharge).where(RecurringCharge.user_id == user_id)
     existing: dict[str, RecurringCharge] = {
-        rc.merchant_key: rc
-        for rc in (await db.execute(existing_stmt)).scalars().all()
+        rc.merchant_key: rc for rc in (await db.execute(existing_stmt)).scalars().all()
     }
 
     for charge in detected:
@@ -113,23 +117,22 @@ async def detect_and_upsert(db: AsyncSession, user_id: uuid.UUID) -> None:
             )
             db.add(rc)
         else:
-            old_last_seen = rc.last_seen_date
-
             rc.occurrence_count = charge.occurrence_count
             rc.next_predicted_date = charge.next_predicted_date
             rc.last_seen_date = charge.last_seen_date
             rc.amount = charge.amount
+            rc.display_name = charge.display_name
+            rc.periodicity = charge.periodicity
 
             if not rc.user_confirmed:
                 rc.status = new_status
 
-            # Installment progress: new payment detected since last sync
+            # Installment progress: sync paid count from total occurrences seen
             if rc.is_installment and rc.installment_total is not None:
-                if charge.last_seen_date > old_last_seen:
-                    rc.installment_paid = (rc.installment_paid or 0) + 1
-                    if rc.installment_paid >= rc.installment_total:
-                        await db.delete(rc)
-                        continue
+                rc.installment_paid = charge.occurrence_count
+                if rc.installment_paid >= rc.installment_total:
+                    await db.delete(rc)
+                    continue
 
     await db.flush()
 
@@ -191,9 +194,7 @@ async def confirm(
     return RecurringChargeResponse.model_validate(rc)
 
 
-async def dismiss(
-    db: AsyncSession, user_id: uuid.UUID, charge_id: uuid.UUID
-) -> None:
+async def dismiss(db: AsyncSession, user_id: uuid.UUID, charge_id: uuid.UUID) -> None:
     """User dismisses a charge (e.g. unsubscribed). Detection will skip it."""
     rc = _require_charge(await get_by_id(db, user_id, charge_id))
     rc.status = "dismissed"
@@ -213,9 +214,7 @@ async def set_installment(
     return RecurringChargeResponse.model_validate(rc)
 
 
-async def delete(
-    db: AsyncSession, user_id: uuid.UUID, charge_id: uuid.UUID
-) -> None:
+async def delete(db: AsyncSession, user_id: uuid.UUID, charge_id: uuid.UUID) -> None:
     """User denies a charge — permanently remove the row."""
     rc = _require_charge(await get_by_id(db, user_id, charge_id))
     await db.delete(rc)
