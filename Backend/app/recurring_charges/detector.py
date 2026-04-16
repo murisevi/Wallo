@@ -85,6 +85,20 @@ def detect_recurring(
             continue
 
         rows_sorted = sorted(rows, key=lambda r: r[4])
+
+        # Deduplicate by date: the same charge may appear on multiple bank
+        # accounts (e.g. the bank reports it on both a current and savings view).
+        seen_dates: set[date] = set()
+        deduped: list[tuple[str, str, Decimal, str, date, bool]] = []
+        for row in rows_sorted:
+            if row[4] not in seen_dates:
+                seen_dates.add(row[4])
+                deduped.append(row)
+        rows_sorted = deduped
+
+        if len(rows_sorted) < 2:
+            continue
+
         dates = [r[4] for r in rows_sorted]
         intervals = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
 
