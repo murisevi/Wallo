@@ -2,13 +2,34 @@
 
 import { useEffect, type ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '@/providers/auth-provider';
+import NavLinkWithPrefetch from '@/components/features/NavLinkWithPrefetch';
+import { api } from '@/lib/api';
+import type { Dashboard, TransactionList } from '@/types';
 
-const navLinks = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/transactions', label: 'Transacciones' },
+const navLinks: {
+  href: string;
+  label: string;
+  prefetch?: { queryKey: string[]; queryFn: () => Promise<unknown> }[];
+}[] = [
+  {
+    href: '/dashboard',
+    label: 'Dashboard',
+    prefetch: [
+      { queryKey: ['dashboard'], queryFn: () => api.get<Dashboard>('/dashboard/') },
+    ],
+  },
+  {
+    href: '/transactions',
+    label: 'Transacciones',
+    prefetch: [
+      {
+        queryKey: ['transactions', 'page:1', 'pageSize:20'],
+        queryFn: () => api.get<TransactionList>('/transactions/?page=1&page_size=20'),
+      },
+    ],
+  },
   { href: '/budgets', label: 'Presupuestos' },
   { href: '/reports', label: 'Informes' },
   { href: '/settings', label: 'Configuración' },
@@ -53,12 +74,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-8">
             <span className="text-xl font-extrabold tracking-tight text-[#0060ad]">Wallo</span>
             <nav className="hidden sm:flex items-center gap-1">
-              {navLinks.map(({ href, label }) => {
+              {navLinks.map(({ href, label, prefetch }) => {
                 const isActive = pathname === href || pathname.startsWith(href + '/');
                 return (
-                  <Link
+                  <NavLinkWithPrefetch
                     key={href}
                     href={href}
+                    prefetchConfig={prefetch}
                     className={`relative px-3 py-4 text-sm font-medium transition-colors ${
                       isActive
                         ? 'text-[#0060ad] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-[#0060ad] after:rounded-t-full'
@@ -66,7 +88,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     }`}
                   >
                     {label}
-                  </Link>
+                  </NavLinkWithPrefetch>
                 );
               })}
             </nav>
@@ -90,18 +112,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* Mobile nav */}
         <div className="flex sm:hidden border-t border-[#f3f4f3] px-4">
-          {navLinks.map(({ href, label }) => {
+          {navLinks.map(({ href, label, prefetch }) => {
             const isActive = pathname === href || pathname.startsWith(href + '/');
             return (
-              <Link
+              <NavLinkWithPrefetch
                 key={href}
                 href={href}
+                prefetchConfig={prefetch}
                 className={`flex-1 py-2 text-center text-xs font-medium transition-colors ${
                   isActive ? 'text-[#0060ad] border-b-2 border-[#0060ad]' : 'text-[#5d605f]'
                 }`}
               >
                 {label}
-              </Link>
+              </NavLinkWithPrefetch>
             );
           })}
         </div>

@@ -30,7 +30,7 @@ def upgrade() -> None:
     sa.Column('periodicity', sa.String(length=10), nullable=False),
     sa.Column('status', sa.String(length=20), server_default='possible', nullable=False),
     sa.Column('user_confirmed', sa.Boolean(), server_default='false', nullable=False),
-    sa.Column('occurrence_count', sa.Integer(), nullable=False),
+    sa.Column('occurrence_count', sa.Integer(), server_default=sa.text('0'), nullable=False),
     sa.Column('next_predicted_date', sa.Date(), nullable=False),
     sa.Column('last_seen_date', sa.Date(), nullable=False),
     sa.Column('is_installment', sa.Boolean(), server_default='false', nullable=False),

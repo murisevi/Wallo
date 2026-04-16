@@ -9,12 +9,14 @@ interface SpendingDonutChartProps {
   totalSpending: string;
   categories: CategorySpending[];
   periodLabel: string;
+  onCategoryClick?: (categoryName: string) => void;
 }
 
 export default function SpendingDonutChart({
   totalSpending,
   categories,
   periodLabel,
+  onCategoryClick,
 }: SpendingDonutChartProps) {
   const total = parseFloat(totalSpending);
 
@@ -59,25 +61,30 @@ export default function SpendingDonutChart({
             innerRadius={72}
             outerRadius={108}
             dataKey="value"
+            nameKey="name"
             strokeWidth={2}
             stroke="#fff"
+            style={{ cursor: onCategoryClick ? 'pointer' : 'default' }}
+            onClick={
+              onCategoryClick
+                ? (entry: { name?: string }) => {
+                    if (entry.name) onCategoryClick(entry.name);
+                  }
+                : undefined
+            }
           >
             {data.map((entry, idx) => (
               <Cell key={idx} fill={entry.color} />
             ))}
           </Pie>
           <Tooltip
-            formatter={(value) => [fmt.format(Number(value)), 'Gasto']}
+            formatter={(value, name) => [fmt.format(Number(value)), String(name)]}
             contentStyle={{ borderRadius: 8, fontSize: 13 }}
           />
         </PieChart>
         {/* Center label — absolutely positioned over the donut hole */}
-        <div
-          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
-        >
-          <span className="text-xl font-bold text-gray-900">
-            {fmt.format(total)}
-          </span>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xl font-bold text-gray-900">{fmt.format(total)}</span>
           <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Total gasto
           </span>
@@ -87,15 +94,19 @@ export default function SpendingDonutChart({
       {/* Legend grid */}
       <div className="grid w-full grid-cols-2 gap-x-4 gap-y-2">
         {categories.map((c) => (
-          <div key={c.name} className="flex items-center gap-2">
+          <div
+            key={c.name}
+            className={`flex items-center gap-2 rounded-md px-1 py-0.5 transition-colors ${
+              onCategoryClick ? 'cursor-pointer hover:bg-gray-50' : ''
+            }`}
+            onClick={() => onCategoryClick?.(c.name)}
+          >
             <span
               className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
               style={{ backgroundColor: c.color }}
             />
             <span className="truncate text-sm text-gray-600">{c.name}</span>
-            <span className="ml-auto text-sm font-semibold text-gray-900">
-              {c.percentage}%
-            </span>
+            <span className="ml-auto text-sm font-semibold text-gray-900">{c.percentage}%</span>
           </div>
         ))}
       </div>

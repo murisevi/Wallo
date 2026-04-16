@@ -8,13 +8,13 @@ from fastapi import APIRouter, Depends
 
 from app.dashboard.schemas import DashboardResponse
 from app.dashboard.service import DashboardService
-from app.dependencies import CurrentUser, DbSession
+from app.dependencies import CurrentUser, DbSession, RedisClient
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
-def get_dashboard_service(db: DbSession) -> DashboardService:
-    return DashboardService(db=db)
+def get_dashboard_service(db: DbSession, redis: RedisClient) -> DashboardService:
+    return DashboardService(db=db, redis=redis)
 
 
 DashboardSvc = Annotated[DashboardService, Depends(get_dashboard_service)]
@@ -26,7 +26,10 @@ async def get_dashboard(
     svc: DashboardSvc,
 ) -> DashboardResponse:
     """Return a unified overview: total balance, all accounts, and the 5 most
-    recent transactions across all connected banks."""
+    recent transactions across all connected banks.
+
+    Results are cached in Redis for 2 minutes.
+    """
     return await svc.get_dashboard(
         user_id=current_user.id,
         user_currency=current_user.currency,

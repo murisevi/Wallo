@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx next:*)",
       "Bash(.venv/Scripts/python -c ':*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(.venv/Scripts/python.exe -c ' *)"
     ]
   }
 }

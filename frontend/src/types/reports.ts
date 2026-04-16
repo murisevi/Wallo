@@ -54,3 +54,30 @@ export interface SankeyResponse {
   nodes: SankeyNode[];
   links: SankeyLink[];
 }
+
+export interface BalanceEvolutionPoint {
+  date: string;
+  label: string;
+  /** Decimal serialised as string */
+  balance: string;
+  change_percent: number;
+}
+
+export interface BalanceEvolutionResponse {
+  period: string;
+  data_points: BalanceEvolutionPoint[];
+  /** Decimal serialised as string */
+  start_balance: string;
+  /** Decimal serialised as string */
+  end_balance: string;
+  /** Decimal serialised as string */
+  total_change: string;
+  total_change_percent: number;
+}
+
+export interface IncomeByCategoryResponse {
+  period: string;
+  /** Decimal serialised as string */
+  total_income: string;
+  categories: CategorySpending[];
+}

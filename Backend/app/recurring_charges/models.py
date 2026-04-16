@@ -45,12 +45,14 @@ class RecurringCharge(Base):
     )
     periodicity: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="possible", server_default="'possible'"
+        String(20), nullable=False, default="possible", server_default="possible"
     )
     user_confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    occurrence_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     next_predicted_date: Mapped[date] = mapped_column(Date, nullable=False)
     last_seen_date: Mapped[date] = mapped_column(Date, nullable=False)
     is_installment: Mapped[bool] = mapped_column(

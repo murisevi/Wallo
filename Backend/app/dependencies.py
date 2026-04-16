@@ -1,8 +1,8 @@
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,3 +55,11 @@ async def get_current_user(
 
 
 CurrentUser = Annotated["User", Depends(get_current_user)]  # noqa: F821
+
+
+async def get_redis(request: Request) -> Any | None:
+    """Return the shared Redis client stored on app.state, or None if unavailable."""
+    return getattr(request.app.state, "redis", None)
+
+
+RedisClient = Annotated[Any | None, Depends(get_redis)]

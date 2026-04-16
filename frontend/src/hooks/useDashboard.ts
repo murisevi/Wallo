@@ -8,5 +8,6 @@ export function useDashboard() {
   return useQuery<Dashboard>({
     queryKey: ['dashboard'],
     queryFn: () => api.get<Dashboard>('/dashboard/'),
+    staleTime: 1000 * 60 * 2, // 2 min — balance aggregation
   });
 }

@@ -8,5 +8,6 @@ export function useAccounts() {
   return useQuery<AccountSummary[]>({
     queryKey: ['accounts'],
     queryFn: () => api.get<AccountSummary[]>('/banking/accounts'),
+    staleTime: 1000 * 60 * 5, // 5 min — accounts rarely change
   });
 }

@@ -12,6 +12,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -110,7 +111,7 @@ class TransactionCategorizer:
             remainder="drop",
         )
 
-        self.pipeline = Pipeline(
+        inner_pipeline = Pipeline(
             [
                 ("preprocessor", preprocessor),
                 (
@@ -128,12 +129,31 @@ class TransactionCategorizer:
 
         X = df[["clean_desc", "log_amount", "is_income"]]
 
-        # Cross-validate before fitting on full data
+        # Cross-validate before wrapping in calibration
         n_folds = min(5, len(df) // 5 or 2)
-        cv_scores = cross_val_score(self.pipeline, X, y, cv=n_folds, scoring="accuracy")
+        cv_scores = cross_val_score(inner_pipeline, X, y, cv=n_folds, scoring="accuracy")
 
-        # Final fit on entire dataset
-        self.pipeline.fit(X, y)
+        # Wrap with isotonic calibration; fall back to cv=3 then uncalibrated.
+        calibrated: Pipeline | CalibratedClassifierCV
+        for cv in (min(5, n_folds), 3, None):
+            try:
+                if cv is None:
+                    calibrated = inner_pipeline
+                    calibrated.fit(X, y)
+                else:
+                    calibrated = CalibratedClassifierCV(
+                        inner_pipeline, cv=cv, method="isotonic"
+                    )
+                    calibrated.fit(X, y)
+                break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Calibration with cv=%s failed (%s), trying fallback", cv, exc)
+        else:
+            # Should never reach here, but satisfy mypy
+            calibrated = inner_pipeline
+            calibrated.fit(X, y)
+
+        self.pipeline = calibrated  # type: ignore[assignment]
         self._is_trained = True
 
         metrics = {

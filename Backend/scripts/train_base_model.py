@@ -49,7 +49,7 @@ def main() -> None:
     for desc, amount in tests:
         cat, conf = categorizer.predict(desc, amount)
         arrow = "OK" if conf >= 0.70 else "~" if conf >= 0.40 else "?"
-        print(f"  {desc:<45} {amount:>10.2f}€  →  {cat:<30} {conf:.1%} {arrow}")
+        print(f"  {desc:<45} {amount:>10.2f}EUR  ->  {cat:<30} {conf:.1%} {arrow}")
 
 
 if __name__ == "__main__":

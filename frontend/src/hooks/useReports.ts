@@ -3,6 +3,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
+  BalanceEvolutionResponse,
+  IncomeByCategoryResponse,
   IncomeVsExpensesResponse,
   PeriodEnum,
   SankeyResponse,
@@ -50,6 +52,36 @@ export function useCashflowSankey(period: PeriodEnum, date?: string) {
   return useQuery<SankeyResponse>({
     queryKey: ['reports', 'cashflow-sankey', period, date],
     queryFn: () => api.get<SankeyResponse>(`/reports/cashflow-sankey?${params.toString()}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Balance evolution
+// ---------------------------------------------------------------------------
+
+export function useBalanceEvolution(period: PeriodEnum, date?: string) {
+  const params = new URLSearchParams({ period });
+  if (date) params.set('date', date);
+
+  return useQuery<BalanceEvolutionResponse>({
+    queryKey: ['reports', 'balance-evolution', period, date],
+    queryFn: () =>
+      api.get<BalanceEvolutionResponse>(`/reports/balance-evolution?${params.toString()}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Income by category
+// ---------------------------------------------------------------------------
+
+export function useIncomeByCategory(period: PeriodEnum, date?: string) {
+  const params = new URLSearchParams({ period });
+  if (date) params.set('date', date);
+
+  return useQuery<IncomeByCategoryResponse>({
+    queryKey: ['reports', 'income-by-category', period, date],
+    queryFn: () =>
+      api.get<IncomeByCategoryResponse>(`/reports/income-by-category?${params.toString()}`),
   });
 }
 

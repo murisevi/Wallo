@@ -35,5 +35,6 @@ export function useTransactions({
   return useQuery<TransactionList>({
     queryKey: ['transactions', { page, pageSize, accountId, search, dateFrom, dateTo, categoryId }],
     queryFn: () => api.get<TransactionList>(`/transactions/?${params.toString()}`),
+    staleTime: 1000 * 60, // 1 min — transactions change on sync
   });
 }

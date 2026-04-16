@@ -166,10 +166,18 @@ class TestCategorizeTransaction:
         bank_account: BankAccount,
         transaction: Transaction,
     ) -> None:
-        """Layer 2+3: ML score ≥ 0.70 → category assigned as ml_auto."""
+        """Layer 4: ML score ≥ 0.70 → category assigned as ml_auto.
+
+        Both the merchant dictionary and keyword rules are stubbed out so the
+        transaction reaches the ML layer.
+        """
         mock_cat = _mock_categorizer("Alimentación", 0.85)
 
-        with patch("app.categories.service.get_categorizer", return_value=mock_cat):
+        with (
+            patch("app.categories.service.get_categorizer", return_value=mock_cat),
+            patch("app.categories.service.match_known_merchant", return_value=None),
+            patch("app.categories.service.match_keyword_rule", return_value=None),
+        ):
             result = await categorize_transaction(db, transaction, user.id)
 
         assert result.category_id == category.id
@@ -184,10 +192,18 @@ class TestCategorizeTransaction:
         bank_account: BankAccount,
         transaction: Transaction,
     ) -> None:
-        """Layer 2+3: ML score between 0.40 and 0.70 → ml_suggested."""
+        """Layer 4: ML score between 0.40 and 0.70 → ml_suggested.
+
+        Both the merchant dictionary and keyword rules are stubbed out so the
+        transaction reaches the ML layer.
+        """
         mock_cat = _mock_categorizer("Alimentación", 0.55)
 
-        with patch("app.categories.service.get_categorizer", return_value=mock_cat):
+        with (
+            patch("app.categories.service.get_categorizer", return_value=mock_cat),
+            patch("app.categories.service.match_known_merchant", return_value=None),
+            patch("app.categories.service.match_keyword_rule", return_value=None),
+        ):
             result = await categorize_transaction(db, transaction, user.id)
 
         assert result.category_id == category.id
@@ -251,7 +267,7 @@ class TestCorrectCategory:
         transaction: Transaction,
     ) -> None:
         """Transaction is marked manual, is_manually_corrected=True, confidence=1."""
-        result = await correct_category(db, user.id, transaction.id, category.id)
+        result, _also_updated = await correct_category(db, user.id, transaction.id, category.id)
 
         assert result.category_id == category.id
         assert result.categorization_method == "manual"

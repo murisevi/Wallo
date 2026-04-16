@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
   ChevronRight,
@@ -501,6 +502,13 @@ function Pagination({ page, totalPages, total, pageSize, onPage }: PaginationPro
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TransactionsPage() {
+  const searchParams = useSearchParams();
+
+  // URL params injected from /reports category click
+  const initialCategoryId = searchParams.get('category_id') ?? '';
+  const initialDateFrom = searchParams.get('date_from') ?? '';
+  const initialDateTo = searchParams.get('date_to') ?? '';
+
   // ── Applied filters (trigger fetch) ───────────────────────────────────────
   const [page, setPage] = useState(1);
   const [appliedFilters, setAppliedFilters] = useState<{
@@ -509,14 +517,20 @@ export default function TransactionsPage() {
     accountId: string;
     dateFrom: string;
     dateTo: string;
-  }>({ search: '', categoryId: '', accountId: '', dateFrom: '', dateTo: '' });
+  }>({
+    search: '',
+    categoryId: initialCategoryId,
+    accountId: '',
+    dateFrom: initialDateFrom,
+    dateTo: initialDateTo,
+  });
 
   // ── Pending (form) filters ─────────────────────────────────────────────────
   const [pendingSearch, setPendingSearch] = useState('');
-  const [pendingCategory, setPendingCategory] = useState('');
+  const [pendingCategory, setPendingCategory] = useState(initialCategoryId);
   const [pendingAccount, setPendingAccount] = useState('');
-  const [pendingDateFrom, setPendingDateFrom] = useState('');
-  const [pendingDateTo, setPendingDateTo] = useState('');
+  const [pendingDateFrom, setPendingDateFrom] = useState(initialDateFrom);
+  const [pendingDateTo, setPendingDateTo] = useState(initialDateTo);
 
   // ── Editing modal ──────────────────────────────────────────────────────────
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);

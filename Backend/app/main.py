@@ -41,11 +41,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         mapping = await seed_default_categories(db)
         logger.info("Default categories ready (%d categories)", len(mapping))
 
+    # Redis — optional cache layer (app continues without it if unavailable)
+    try:
+        import redis.asyncio as aioredis  # type: ignore[import-untyped]
+
+        redis_client = aioredis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+        )
+        await redis_client.ping()
+        app.state.redis = redis_client
+        logger.info("Redis cache connected (%s)", settings.redis_url)
+    except Exception as exc:
+        logger.warning("Redis unavailable — cache disabled: %s", exc)
+        app.state.redis = None
+
     yield
 
     # Shutdown
     if getattr(app.state, "eb_client", None) is not None:
         await app.state.eb_client.close()
+    if getattr(app.state, "redis", None) is not None:
+        await app.state.redis.aclose()
     await engine.dispose()
 
 

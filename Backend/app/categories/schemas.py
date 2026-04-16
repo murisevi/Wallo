@@ -41,6 +41,7 @@ class CategoryCorrectionResponse(BaseModel):
     old_category_id: uuid.UUID | None
     new_category_id: uuid.UUID
     confidence_score: float
+    also_updated: int  # other transactions with the same merchant updated in the same call
 
 
 # ── Categorisation Stats ──────────────────────────────────────────────────
@@ -62,7 +63,10 @@ class RecategorizeResponse(BaseModel):
     """Summary returned by the bulk recategorization endpoint."""
 
     total: int
+    rule_based: int = 0
     merchant_map: int
+    global_dict: int = 0
+    keyword_rule: int = 0
     ml_auto: int
     ml_suggested: int
     uncategorized: int

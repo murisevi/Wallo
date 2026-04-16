@@ -66,7 +66,7 @@ async def correct_transaction_category(
     Records a CategoryCorrection and updates the merchant mapping so the same
     merchant is auto-categorised on subsequent syncs.
     """
-    transaction = await service.correct_category(
+    transaction, also_updated = await service.correct_category(
         db=db,
         user_id=current_user.id,
         transaction_id=transaction_id,
@@ -77,6 +77,7 @@ async def correct_transaction_category(
         old_category_id=None,  # correct_category does not return the old value
         new_category_id=transaction.category_id,  # type: ignore[arg-type]
         confidence_score=transaction.confidence_score or 1.0,
+        also_updated=also_updated,
     )
 
 

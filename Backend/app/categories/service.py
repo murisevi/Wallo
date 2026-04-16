@@ -1,8 +1,11 @@
-"""Categorisation service — orchestrates the 3-layer cascade.
+"""Categorisation service — orchestrates the 6-layer cascade.
 
+Layer 0: Rule-based type detection (Bizum / ATM cash)
 Layer 1: Merchant mapping  (exact match from user corrections)
-Layer 2: ML model prediction
-Layer 3: Confidence threshold  (auto / suggested / uncategorised)
+Layer 2: Global merchant dictionary  (static 200+ entry lookup)
+Layer 3: Keyword rules  (generic business-type words)
+Layer 4: ML model prediction
+Layer 5: Confidence threshold  (auto / suggested / uncategorised)
 """
 
 from __future__ import annotations
@@ -10,14 +13,20 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.categories.keyword_rules import match_keyword_rule
+from app.categories.merchant_dictionary import match_known_merchant
 from app.categories.merchant_mapping import MerchantMapping
 from app.categories.ml_categorizer import TransactionCategorizer
 from app.categories.models import Category, CategoryCorrection
 from app.categories.schemas import CategoryResponse
-from app.categories.text_cleaner import clean_bank_description, extract_merchant_key
+from app.categories.text_cleaner import (
+    clean_bank_description,
+    detect_transaction_type,
+    extract_merchant_key,
+)
 from app.transactions.models import Transaction
 
 logger = logging.getLogger(__name__)
@@ -61,7 +70,14 @@ async def categorize_transaction(
     transaction: Transaction,
     user_id: uuid.UUID,
 ) -> Transaction:
-    """Categorise a single transaction using the 3-layer cascade.
+    """Categorise a single transaction using the 6-layer cascade.
+
+    Layer 0: Rule-based type detection (Bizum / ATM cash)
+    Layer 1: Merchant mapping  (exact match from user corrections)
+    Layer 2: Global merchant dictionary  (static 200+ entry lookup)
+    Layer 3: Keyword rules  (generic business-type words)
+    Layer 4: ML model prediction
+    Layer 5: Confidence threshold  (auto / suggested / uncategorised)
 
     Mutates `transaction` in-place with category_id, confidence_score,
     and categorization_method, then returns it.
@@ -72,6 +88,28 @@ async def categorize_transaction(
     cleaned = clean_bank_description(raw_desc)
     merchant_key = extract_merchant_key(cleaned)
 
+    # ── Layer 0: Rule-based type detection ─────────────────────────────────
+    # Bizum and ATM cash are structurally unambiguous — no ML needed.
+    tx_type = detect_transaction_type(raw_desc)
+
+    if tx_type == "bizum_received":
+        category = await _resolve_category_by_name(db, "Transferencias recibidas", user_id)
+        if category:
+            transaction.category_id = category.id
+            transaction.confidence_score = 0.85
+            transaction.categorization_method = "rule_based"
+            logger.debug("Rule-based: bizum_received → Transferencias recibidas")
+            return transaction
+
+    if tx_type in ("bizum_sent", "cash"):
+        category = await _resolve_category_by_name(db, "Otros gastos", user_id)
+        if category:
+            transaction.category_id = category.id
+            transaction.confidence_score = 0.85
+            transaction.categorization_method = "rule_based"
+            logger.debug("Rule-based: %s → Otros gastos", tx_type)
+            return transaction
+
     # ── Layer 1: Merchant mapping (user-specific, high precision) ──────────
     mapping = await _lookup_merchant_mapping(db, user_id, merchant_key)
     if mapping:
@@ -81,7 +119,35 @@ async def categorize_transaction(
         logger.debug("Merchant map hit: %s → %s", merchant_key, mapping.category_id)
         return transaction
 
-    # ── Layer 2: ML prediction ─────────────────────────────────────────────
+    # ── Layer 2: Global merchant dictionary ───────────────────────────────
+    dict_match = match_known_merchant(cleaned)
+    if dict_match:
+        dict_category_name, dict_confidence = dict_match
+        dict_category = await _resolve_category_by_name(db, dict_category_name, user_id)
+        if dict_category:
+            transaction.category_id = dict_category.id
+            transaction.confidence_score = dict_confidence
+            transaction.categorization_method = "global_dict"
+            logger.debug(
+                "Global dict hit: %s → %s (%.2f)", cleaned, dict_category_name, dict_confidence
+            )
+            return transaction
+
+    # ── Layer 3: Keyword rules ─────────────────────────────────────────────
+    kw_match = match_keyword_rule(cleaned)
+    if kw_match:
+        kw_category_name, kw_confidence = kw_match
+        kw_category = await _resolve_category_by_name(db, kw_category_name, user_id)
+        if kw_category:
+            transaction.category_id = kw_category.id
+            transaction.confidence_score = kw_confidence
+            transaction.categorization_method = "keyword_rule"
+            logger.debug(
+                "Keyword rule hit: %s → %s (%.2f)", cleaned, kw_category_name, kw_confidence
+            )
+            return transaction
+
+    # ── Layer 4: ML prediction ─────────────────────────────────────────────
     categorizer = get_categorizer()
     if categorizer.is_trained:
         predicted_name, confidence = categorizer.predict(raw_desc, amount)
@@ -131,14 +197,20 @@ async def correct_category(
     user_id: uuid.UUID,
     transaction_id: uuid.UUID,
     new_category_id: uuid.UUID,
-) -> Transaction:
+) -> tuple[Transaction, int]:
     """Process a user correction.
 
     Updates the transaction, persists a CategoryCorrection for future
-    retraining, and creates/updates the merchant mapping so the same
-    merchant is immediately auto-categorised on the next sync.
+    retraining, upserts the merchant mapping, and immediately propagates
+    the correction to every other non-manually-corrected transaction that
+    shares the same merchant key.
 
-    This is the core of the active-learning loop.
+    Propagation is O(n_descriptions) in Python — no ML inference needed,
+    ~30 ms for a typical dataset of 500 transactions.
+
+    Returns:
+        (transaction, also_updated) where also_updated is the count of
+        additional transactions updated beyond the one explicitly corrected.
 
     Raises:
         ValueError: If the transaction does not exist.
@@ -175,16 +247,26 @@ async def correct_category(
     # 4. Upsert merchant mapping so it fires on next sync
     await _upsert_merchant_mapping(db, user_id, merchant_key, new_category_id)
 
+    # 5. Propagate immediately to other existing transactions with the same merchant
+    also_updated = await _recategorize_same_merchant(
+        db,
+        user_id=user_id,
+        merchant_key=merchant_key,
+        category_id=new_category_id,
+        exclude_transaction_id=transaction_id,
+    )
+
     await db.flush()
     await db.refresh(transaction)
 
     logger.info(
-        "Category corrected: tx=%s, merchant=%s → category=%s",
+        "Category corrected: tx=%s, merchant=%s → category=%s (%d additional updated)",
         transaction_id,
         merchant_key,
         new_category_id,
+        also_updated,
     )
-    return transaction
+    return transaction, also_updated
 
 
 async def recategorize_all_transactions(
@@ -197,7 +279,8 @@ async def recategorize_all_transactions(
     explicit user feedback used as training data and must not be overwritten.
 
     Returns a summary dict with keys:
-        total, merchant_map, ml_auto, ml_suggested, uncategorized
+        total, rule_based, merchant_map, global_dict, keyword_rule,
+        ml_auto, ml_suggested, uncategorized
     """
     from app.transactions.models import Transaction  # local import avoids circular dep
 
@@ -226,8 +309,17 @@ async def recategorize_all_transactions(
 
     summary = {
         "total": len(transactions),
+        "rule_based": sum(
+            1 for t in transactions if t.categorization_method == "rule_based"
+        ),
         "merchant_map": sum(
             1 for t in transactions if t.categorization_method == "merchant_map"
+        ),
+        "global_dict": sum(
+            1 for t in transactions if t.categorization_method == "global_dict"
+        ),
+        "keyword_rule": sum(
+            1 for t in transactions if t.categorization_method == "keyword_rule"
         ),
         "ml_auto": sum(
             1 for t in transactions if t.categorization_method == "ml_auto"
@@ -315,6 +407,59 @@ async def _resolve_category_by_name(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _recategorize_same_merchant(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    merchant_key: str,
+    category_id: uuid.UUID,
+    exclude_transaction_id: uuid.UUID,
+) -> int:
+    """Update all non-manually-corrected transactions that share *merchant_key*.
+
+    Avoids the ML pipeline entirely — just fetches descriptions, filters in
+    Python with extract_merchant_key(), and issues a single bulk UPDATE.
+    Benchmarked at ~30 ms for 500 transactions.
+
+    Returns the number of transactions updated.
+    """
+    if not merchant_key:
+        return 0
+
+    # Fetch only the columns we need — no ML, no relationships
+    stmt = select(Transaction.id, Transaction.description).where(
+        Transaction.user_id == user_id,
+        Transaction.is_manually_corrected.is_(False),
+        Transaction.id != exclude_transaction_id,
+    )
+    rows = (await db.execute(stmt)).all()
+
+    matching_ids = [
+        tx_id
+        for tx_id, description in rows
+        if extract_merchant_key(clean_bank_description(description or "")) == merchant_key
+    ]
+
+    if not matching_ids:
+        return 0
+
+    await db.execute(
+        update(Transaction)
+        .where(Transaction.id.in_(matching_ids))
+        .values(
+            category_id=category_id,
+            confidence_score=1.0,
+            categorization_method="merchant_map",
+        )
+    )
+
+    logger.info(
+        "Same-merchant propagation: merchant=%s → %d transactions updated",
+        merchant_key,
+        len(matching_ids),
+    )
+    return len(matching_ids)
 
 
 async def _upsert_merchant_mapping(
