@@ -6,9 +6,9 @@ import uuid
 
 from fastapi import APIRouter, status
 
+from app.dependencies import CurrentUser, DbSession
 from app.recurring_charges import service as svc
 from app.recurring_charges.schemas import RecurringChargeResponse, SetInstallmentRequest
-from app.dependencies import CurrentUser, DbSession
 
 router = APIRouter(prefix="/recurring-charges", tags=["recurring-charges"])
 

@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RecurringChargeResponse(BaseModel):
@@ -27,4 +27,4 @@ class RecurringChargeResponse(BaseModel):
 
 
 class SetInstallmentRequest(BaseModel):
-    installment_total: int
+    installment_total: int = Field(ge=1)
