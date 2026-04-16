@@ -1,5 +1,6 @@
 import type { Budget, BudgetCreate, BudgetSummary, BudgetUpdate } from '@/types/budget';
 import type { Category, CategoryCorrectionResponse } from '@/types/categories';
+import type { RecurringCharge } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
 
@@ -150,6 +151,32 @@ export const categoryApi = {
       `/categories/transactions/${transactionId}/category`,
       { category_id: categoryId },
     );
+  },
+};
+
+// ─── Recurring charges endpoints ─────────────────────────────────────────────
+
+export const recurringApi = {
+  list(): Promise<RecurringCharge[]> {
+    return api.get<RecurringCharge[]>('/recurring-charges/');
+  },
+
+  confirm(id: string): Promise<RecurringCharge> {
+    return api.patch<RecurringCharge>(`/recurring-charges/${id}/confirm`);
+  },
+
+  dismiss(id: string): Promise<void> {
+    return api.patch<void>(`/recurring-charges/${id}/dismiss`);
+  },
+
+  setInstallment(id: string, installment_total: number): Promise<RecurringCharge> {
+    return api.patch<RecurringCharge>(`/recurring-charges/${id}/installment`, {
+      installment_total,
+    });
+  },
+
+  delete(id: string): Promise<void> {
+    return api.delete<void>(`/recurring-charges/${id}`);
   },
 };
 

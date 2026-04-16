@@ -74,6 +74,23 @@ export interface TransactionList {
   total_pages: number;
 }
 
+export interface RecurringCharge {
+  id: string;
+  display_name: string;
+  /** Decimal serialised as string */
+  amount: string;
+  currency: string;
+  periodicity: 'WEEKLY' | 'MONTHLY' | 'ANNUAL';
+  status: 'possible' | 'confirmed' | 'dismissed';
+  user_confirmed: boolean;
+  occurrence_count: number;
+  /** ISO date string */
+  next_predicted_date: string;
+  is_installment: boolean;
+  installment_total: number | null;
+  installment_paid: number | null;
+}
+
 export interface Dashboard {
   /** Decimal serialised as string */
   total_balance: string;
@@ -81,6 +98,7 @@ export interface Dashboard {
   accounts: AccountSummary[];
   recent_transactions: Transaction[];
   last_synced_at: string | null;
+  upcoming_charges: RecurringCharge[];
 }
 
 export interface BankInstitution {
