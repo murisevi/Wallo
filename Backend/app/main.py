@@ -90,6 +90,7 @@ from app.budgets.router import router as budgets_router  # noqa: E402
 from app.categories.router import router as categories_router  # noqa: E402
 from app.dashboard.router import router as dashboard_router  # noqa: E402
 from app.reports.router import router as reports_router  # noqa: E402
+from app.recurring_charges.router import router as recurring_charges_router  # noqa: E402
 from app.transactions.router import router as transactions_router  # noqa: E402
 
 app.include_router(auth_router, prefix="/api/v1")
@@ -99,6 +100,7 @@ app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(budgets_router, prefix="/api/v1")
 app.include_router(categories_router, prefix="/api/v1")
 app.include_router(reports_router, prefix="/api/v1")
+app.include_router(recurring_charges_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["meta"])
