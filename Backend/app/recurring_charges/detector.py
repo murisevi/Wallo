@@ -55,7 +55,7 @@ def _classify_periodicity(intervals: list[int]) -> str | None:
     avg = sum(intervals) / len(intervals)
     for target, tol, label in _PERIODICITY_SPECS:
         if abs(avg - target) <= tol:
-            # Every individual interval must also be within 2× tolerance
+            # Every individual interval must also be within 2x tolerance
             if all(abs(iv - target) <= tol * 2 for iv in intervals):
                 return label
     return None
@@ -74,7 +74,8 @@ def detect_recurring(
         One DetectedCharge per merchant with ≥ 2 occurrences and a
         consistent periodicity (WEEKLY / MONTHLY / ANNUAL).
     """
-    groups: dict[str, list[tuple]] = defaultdict(list)
+    TxnRow = tuple[str, str, Decimal, str, date, bool]
+    groups: dict[str, list[TxnRow]] = defaultdict(list)
     for row in transactions:
         groups[row[0]].append(row)
 

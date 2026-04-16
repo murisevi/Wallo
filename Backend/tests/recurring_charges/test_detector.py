@@ -2,14 +2,13 @@
 
 No database required — detector is a pure function.
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
-
-from app.recurring_charges.detector import DetectedCharge, detect_recurring
+from app.recurring_charges.detector import detect_recurring
 
 
 def _txns(
@@ -32,7 +31,10 @@ BASE = date(2024, 1, 15)
 
 class TestMonthlyDetection:
     def test_three_monthly_charges_detected(self):
-        txns = _txns("NETFLIX", [BASE, BASE + timedelta(days=31), BASE + timedelta(days=62)])
+        txns = _txns(
+            "NETFLIX",
+            [BASE, BASE + timedelta(days=31), BASE + timedelta(days=62)],
+        )
         result = detect_recurring(txns)
         assert len(result) == 1
         assert result[0].periodicity == "MONTHLY"
@@ -106,7 +108,14 @@ class TestSubscriptionFlag:
     def test_subscription_flag_propagated(self):
         txns = [
             ("NETFLIX", "Netflix", Decimal("9.99"), "EUR", BASE, True),
-            ("NETFLIX", "Netflix", Decimal("9.99"), "EUR", BASE + timedelta(days=30), True),
+            (
+                "NETFLIX",
+                "Netflix",
+                Decimal("9.99"),
+                "EUR",
+                BASE + timedelta(days=30),
+                True,
+            ),
         ]
         result = detect_recurring(txns)
         assert result[0].is_subscription is True
@@ -115,7 +124,14 @@ class TestSubscriptionFlag:
         """Even one occurrence with is_subscription=True sets the flag."""
         txns = [
             ("NETFLIX", "Netflix", Decimal("9.99"), "EUR", BASE, False),
-            ("NETFLIX", "Netflix", Decimal("9.99"), "EUR", BASE + timedelta(days=30), True),
+            (
+                "NETFLIX",
+                "Netflix",
+                Decimal("9.99"),
+                "EUR",
+                BASE + timedelta(days=30),
+                True,
+            ),
         ]
         result = detect_recurring(txns)
         assert result[0].is_subscription is True
@@ -128,9 +144,8 @@ class TestSubscriptionFlag:
 
 class TestMultipleMerchants:
     def test_two_merchants_detected_independently(self):
-        txns = (
-            _txns("NETFLIX", [BASE, BASE + timedelta(days=30)])
-            + _txns("SPOTIFY", [BASE, BASE + timedelta(days=30)])
+        txns = _txns("NETFLIX", [BASE, BASE + timedelta(days=30)]) + _txns(
+            "SPOTIFY", [BASE, BASE + timedelta(days=30)]
         )
         result = detect_recurring(txns)
         assert len(result) == 2

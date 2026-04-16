@@ -4,7 +4,9 @@
       "Bash(npx next:*)",
       "Bash(.venv/Scripts/python -c ':*)",
       "WebSearch",
-      "Bash(.venv/Scripts/python.exe -c ' *)"
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(python -m ruff check app/recurring_charges/ tests/recurring_charges/ --fix)",
+      "Bash(python -m ruff format app/recurring_charges/ tests/recurring_charges/)"
     ]
   }
 }
