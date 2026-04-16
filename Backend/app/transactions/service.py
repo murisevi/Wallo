@@ -200,6 +200,9 @@ async def sync_transactions(
     # Auto-categorise all newly inserted transactions in one batch.
     if new_txns:
         await categorize_batch(db, new_txns, account.user_id)
+        # Re-detect recurring charges now that new categorised transactions exist
+        from app.recurring_charges.service import detect_and_upsert
+        await detect_and_upsert(db, account.user_id)
 
     logger.info(
         "Synced transactions for account %s: %d new, %d total fetched",
