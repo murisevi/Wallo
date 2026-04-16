@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.banking.models import BankAccount, BankConnection
 from app.core.cache import cached_response, invalidate_cache
 from app.dashboard.schemas import AccountSummary, DashboardResponse
+from app.recurring_charges.service import get_upcoming as get_upcoming_charges
 from app.transactions.models import Transaction
 from app.transactions.schemas import TransactionResponse
 
@@ -118,12 +119,15 @@ class DashboardService:
         cache_key = f"dashboard:{user_id}"
 
         async def _fetch() -> dict[str, object]:
-            # Run both queries concurrently on the same async session
-            (accounts, total_balance, last_synced_at), recent_transactions = (
-                await asyncio.gather(
-                    self._fetch_accounts(user_id, user_currency),
-                    self._fetch_recent_transactions(user_id),
-                )
+            # Run all three queries concurrently on the same async session
+            (
+                (accounts, total_balance, last_synced_at),
+                recent_transactions,
+                upcoming_charges,
+            ) = await asyncio.gather(
+                self._fetch_accounts(user_id, user_currency),
+                self._fetch_recent_transactions(user_id),
+                get_upcoming_charges(self._db, user_id),
             )
 
             response = DashboardResponse(
@@ -132,6 +136,7 @@ class DashboardService:
                 accounts=accounts,
                 recent_transactions=recent_transactions,
                 last_synced_at=last_synced_at,
+                upcoming_charges=upcoming_charges,
             )
             # Return as dict so cached_response can serialise it to JSON
             return response.model_dump(mode="json")
