@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.goals.schemas import GoalResponse
 from app.recurring_charges.schemas import RecurringChargeResponse
 from app.transactions.schemas import TransactionResponse
 
@@ -27,3 +28,4 @@ class DashboardResponse(BaseModel):
     recent_transactions: list[TransactionResponse]
     last_synced_at: datetime | None
     upcoming_charges: list[RecurringChargeResponse] = []
+    active_goal: GoalResponse | None = None

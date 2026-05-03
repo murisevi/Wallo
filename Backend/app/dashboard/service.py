@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.banking.models import BankAccount, BankConnection
 from app.core.cache import cached_response, invalidate_cache
 from app.dashboard.schemas import AccountSummary, DashboardResponse
+from app.goals.schemas import GoalResponse
+from app.goals.service import get_active_goal_for_dashboard
 from app.recurring_charges.service import get_upcoming as get_upcoming_charges
 from app.transactions.models import Transaction
 from app.transactions.schemas import TransactionResponse
@@ -104,6 +106,12 @@ class DashboardService:
             recent.append(resp)
         return recent
 
+    async def _fetch_active_goal(self, user_id: uuid.UUID) -> GoalResponse | None:
+        try:
+            return await get_active_goal_for_dashboard(self._db, user_id)
+        except Exception:
+            return None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -119,15 +127,17 @@ class DashboardService:
         cache_key = f"dashboard:{user_id}"
 
         async def _fetch() -> dict[str, object]:
-            # Run all three queries concurrently on the same async session
+            # Run all queries concurrently on the same async session
             (
                 (accounts, total_balance, last_synced_at),
                 recent_transactions,
                 upcoming_charges,
+                active_goal,
             ) = await asyncio.gather(
                 self._fetch_accounts(user_id, user_currency),
                 self._fetch_recent_transactions(user_id),
                 get_upcoming_charges(self._db, user_id),
+                self._fetch_active_goal(user_id),
             )
 
             response = DashboardResponse(
@@ -137,6 +147,7 @@ class DashboardService:
                 recent_transactions=recent_transactions,
                 last_synced_at=last_synced_at,
                 upcoming_charges=upcoming_charges,
+                active_goal=active_goal,
             )
             # Return as dict so cached_response can serialise it to JSON
             return response.model_dump(mode="json")
