@@ -31,6 +31,7 @@ const navLinks: {
     ],
   },
   { href: '/budgets', label: 'Presupuestos' },
+  { href: '/goals', label: 'Objetivos' },
   { href: '/reports', label: 'Informes' },
   { href: '/settings', label: 'Configuración' },
 ];
@@ -68,7 +69,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-full flex-col">
       {/* Top navigation */}
-      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md shadow-[0_1px_0_rgba(48,51,51,0.06)]">
+      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md shadow-header">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Logo + nav links */}
           <div className="flex items-center gap-8">
