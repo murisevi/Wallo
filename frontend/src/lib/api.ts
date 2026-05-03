@@ -4,6 +4,7 @@ import type {
   ContributionCreate,
   GoalContribution,
   GoalCreate,
+  GoalStatus,
   GoalSummary,
   GoalUpdate,
   SavingsGoal,
@@ -199,7 +200,7 @@ export const recurringApi = {
 // ─── Goals endpoints ─────────────────────────────────────────────────────────
 
 export const goalsApi = {
-  list(status?: string): Promise<GoalSummary> {
+  list(status?: GoalStatus | 'all'): Promise<GoalSummary> {
     const qs = status && status !== 'all' ? `?status=${status}` : '';
     return api.get<GoalSummary>(`/goals/${qs}`);
   },

@@ -3,12 +3,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { goalsApi } from '@/lib/api';
-import type { ContributionCreate, GoalCreate, GoalUpdate } from '@/types/goals';
+import type { ContributionCreate, GoalCreate, GoalStatus, GoalUpdate } from '@/types/goals';
 
-export function useGoals(status?: string) {
+export function useGoals(status?: GoalStatus | 'all') {
   return useQuery({
     queryKey: ['goals', status ?? 'all'],
-    queryFn: () => goalsApi.list(status),
+    queryFn: () => goalsApi.list(status ?? 'all'),
+    staleTime: 60_000,
   });
 }
 
@@ -51,9 +52,28 @@ export function useAddContribution() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ContributionCreate }) =>
       goalsApi.addContribution(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
+      queryClient.invalidateQueries({ queryKey: ['goals', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
+  });
+}
+
+export function useGoal(id: string) {
+  return useQuery({
+    queryKey: ['goals', id],
+    queryFn: () => goalsApi.get(id),
+    enabled: Boolean(id),
+    staleTime: 60_000,
+  });
+}
+
+export function useGoalContributions(id: string) {
+  return useQuery({
+    queryKey: ['goals', id, 'contributions'],
+    queryFn: () => goalsApi.getContributions(id),
+    enabled: Boolean(id),
+    staleTime: 60_000,
   });
 }

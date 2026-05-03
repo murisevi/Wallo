@@ -1,6 +1,8 @@
 // frontend/src/types/goals.ts
 // Decimal fields serialised as string by FastAPI. Create/Update use number (user input).
 
+export type GoalStatus = 'active' | 'completed' | 'cancelled';
+
 export interface SavingsGoal {
   id: string;
   user_id: string;
@@ -15,7 +17,7 @@ export interface SavingsGoal {
   monthly_contribution: string | null;
   deadline: string | null;
   priority: number;
-  status: 'active' | 'completed' | 'cancelled';
+  status: GoalStatus;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -65,7 +67,7 @@ export interface GoalUpdate {
   monthly_contribution?: number | null;
   deadline?: string | null;
   priority?: number;
-  status?: 'active' | 'completed' | 'cancelled';
+  status?: GoalStatus;
 }
 
 export interface ContributionCreate {
