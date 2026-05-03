@@ -16,7 +16,7 @@ Core MVP (Open Banking) is complete. ML transaction categorization has been impl
 7. User corrections with active learning (CategoryCorrection + MerchantMapping upsert)
 8. Category management API (list, create custom, PATCH for corrections)
 
-NOT implemented yet: budgets, goals, reports, Celery workers, Sankey charts.
+NOT implemented yet: budgets, reports, Celery workers, Sankey charts.
 
 ## Tech Stack
 - **Backend**: Python 3.12, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2
@@ -90,9 +90,15 @@ wallo/
 │   │   │   ├── ml_categorizer.py    # TF-IDF + GradientBoosting pipeline
 │   │   │   ├── tasks.py         # retrain_model() sync fn (Celery wrapper commented out)
 │   │   │   └── __init__.py
+│   │   ├── goals/               # Savings goals domain
+│   │   │   ├── router.py        # CRUD endpoints for goals + contributions
+│   │   │   ├── schemas.py       # GoalCreate, GoalUpdate, GoalResponse, GoalSummaryResponse
+│   │   │   ├── models.py        # SavingsGoal, GoalContribution SQLAlchemy models
+│   │   │   ├── service.py       # Goal management + computed fields (pace, ETA, messages)
+│   │   │   └── __init__.py
 │   │   └── dashboard/           # Dashboard aggregation domain
 │   │       ├── router.py        # GET /dashboard (aggregated view)
-│   │       ├── schemas.py       # DashboardResponse
+│   │       ├── schemas.py       # DashboardResponse (includes active_goal)
 │   │       ├── service.py       # Balance aggregation logic
 │   │       └── __init__.py
 │   ├── alembic/
@@ -119,18 +125,20 @@ wallo/
 │   │   │   └── (dashboard)/     # Route group: main app
 │   │   │       ├── layout.tsx   # Dashboard layout with sidebar
 │   │   │       ├── page.tsx     # Dashboard home (balances)
-│   │   │       └── transactions/page.tsx
+│   │   │       ├── transactions/page.tsx
+│   │   │       └── goals/page.tsx
 │   │   ├── components/
 │   │   │   ├── ui/              # Primitives: Button, Input, Card, Skeleton
 │   │   │   └── features/        # Domain: AccountCard, TransactionRow, CategoryBadge
 │   │   ├── lib/
-│   │   │   ├── api.ts           # Typed fetch wrapper (api, budgetApi, categoryApi)
+│   │   │   ├── api.ts           # Typed fetch wrapper (api, budgetApi, categoryApi, goalsApi)
 │   │   │   └── auth.ts          # Token storage, auth helpers
 │   │   ├── hooks/               # useAccounts, useTransactions, useCategories
 │   │   ├── providers/           # QueryClientProvider, AuthProvider
 │   │   └── types/               # Shared TypeScript interfaces matching backend schemas
 │   │       ├── index.ts         # Transaction, User, Dashboard, etc.
-│   │       └── categories.ts    # Category, TransactionWithCategory (canonical)
+│   │       ├── categories.ts    # Category, TransactionWithCategory (canonical)
+│   │       └── goals.ts         # SavingsGoal, GoalContribution, GoalSummary, GoalCreate/Update
 │   ├── package.json
 │   ├── tailwind.config.ts
 │   └── tsconfig.json
