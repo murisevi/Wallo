@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 
 interface ContributionPanelProps {
-  goalId: string;
   onSubmit: (amount: number, note: string | null) => void;
   onCancel: () => void;
   isLoading?: boolean;

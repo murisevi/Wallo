@@ -9,6 +9,7 @@ import { GoalEmptyState } from '@/components/features/goals/GoalEmptyState';
 import { NewGoalModal } from '@/components/features/goals/NewGoalModal';
 import { EditGoalModal } from '@/components/features/goals/EditGoalModal';
 import { DeleteGoalDialog } from '@/components/features/goals/DeleteGoalDialog';
+import GoalsLoading from './loading';
 import type { GoalCreate, GoalUpdate, SavingsGoal } from '@/types/goals';
 
 export default function GoalsPage() {
@@ -23,7 +24,7 @@ export default function GoalsPage() {
   const [deletingGoal, setDeletingGoal] = useState<SavingsGoal | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(false);
 
-  if (isLoading) return null;
+  if (isLoading) return <GoalsLoading />;
 
   if (isError) {
     return (
@@ -34,7 +35,7 @@ export default function GoalsPage() {
   }
 
   const activeGoals = summary?.goals.filter((g) => g.status === 'active') ?? [];
-  const completedGoals = summary?.goals.filter((g) => g.status !== 'active') ?? [];
+  const completedGoals = summary?.goals.filter((g) => g.status === 'completed') ?? [];
   const hasGoals = (summary?.goals.length ?? 0) > 0;
 
   function handleCreate(data: GoalCreate) {

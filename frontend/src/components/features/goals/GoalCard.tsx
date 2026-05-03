@@ -118,7 +118,6 @@ export function GoalCard({ goal, onContribute, onEdit, onDelete, isContributing 
           <>
             {showPanel ? (
               <ContributionPanel
-                goalId={goal.id}
                 onSubmit={(amount, note) => {
                   onContribute(goal.id, amount, note);
                   setShowPanel(false);
@@ -140,7 +139,7 @@ export function GoalCard({ goal, onContribute, onEdit, onDelete, isContributing 
 
         {goal.status === 'completed' && (
           <div className="mt-3 flex items-center justify-center gap-1.5 rounded-xl bg-green-50 py-2 text-sm font-medium text-green-700">
-            ¡Objetivo cumplido! 🎉
+            ¡Objetivo cumplido!
           </div>
         )}
       </div>

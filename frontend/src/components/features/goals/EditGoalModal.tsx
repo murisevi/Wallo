@@ -54,7 +54,7 @@ export function EditGoalModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const target = parseFloat(String(targetAmount).replace(',', '.'));
+    const target = parseFloat(targetAmount.replace(',', '.'));
     if (!name.trim() || !target || target <= 0) return;
     onSubmit(goal.id, {
       name: name.trim(),
@@ -62,7 +62,7 @@ export function EditGoalModal({
       icon,
       color,
       monthly_contribution: monthlyContribution
-        ? parseFloat(String(monthlyContribution).replace(',', '.'))
+        ? parseFloat(monthlyContribution.replace(',', '.'))
         : null,
       deadline: deadline || null,
     });
@@ -181,7 +181,8 @@ export function EditGoalModal({
                     <button
                       type="button"
                       onClick={() => onMarkCompleted(goal.id)}
-                      className="flex-1 rounded-lg bg-green-600 py-1.5 text-xs font-semibold text-white"
+                      disabled={isLoading}
+                      className="flex-1 rounded-lg bg-green-600 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       Confirmar
                     </button>
