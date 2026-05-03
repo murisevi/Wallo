@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -7,6 +7,7 @@ import { RefreshCw, PlusCircle, Calendar, TrendingDown, CheckCircle, XCircle, X,
 import { useAuth } from '@/providers/auth-provider';
 import { useDashboard } from '@/hooks/useDashboard';
 import { TransactionRow } from '@/components/features/TransactionRow';
+import { GoalProgressBar } from '@/components/features/goals/GoalProgressBar';
 import { api, recurringApi } from '@/lib/api';
 import type { RecurringCharge } from '@/types';
 
@@ -113,11 +114,11 @@ export default function DashboardPage() {
         </div>
         <SkeletonHero />
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl bg-white p-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+          <div className="rounded-2xl bg-white p-6 shadow-card-md">
             <div className="mb-4 h-5 w-40 animate-pulse rounded-full bg-[#f3f4f3]" />
             {[0, 1, 2, 3, 4].map((i) => <SkeletonRow key={i} />)}
           </div>
-          <div className="rounded-2xl bg-white p-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+          <div className="rounded-2xl bg-white p-6 shadow-card-md">
             <div className="mb-4 h-5 w-36 animate-pulse rounded-full bg-[#f3f4f3]" />
             <div className="h-24 w-full animate-pulse rounded-xl bg-[#f3f4f3]" />
           </div>
@@ -129,7 +130,7 @@ export default function DashboardPage() {
   // ── Error ────────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <div className="rounded-2xl bg-white px-8 py-12 text-center shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+      <div className="rounded-2xl bg-white px-8 py-12 text-center shadow-card-md">
         <p className="text-sm font-medium text-red-600">
           No se pudo cargar el panel. Comprueba tu conexión e inténtalo de nuevo.
         </p>
@@ -169,7 +170,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Hero balance card — soft mint green */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#e8f5ee] via-[#ddf0e5] to-[#cce8d7] px-8 py-12 text-center shadow-[0_4px_24px_rgba(48,51,51,0.08)]">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#e8f5ee] via-[#ddf0e5] to-[#cce8d7] px-8 py-12 text-center shadow-card-md">
         {/* Decorative rings */}
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/30" />
         <div className="pointer-events-none absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-white/20" />
@@ -194,7 +195,7 @@ export default function DashboardPage() {
 
       {/* No accounts — empty state */}
       {!hasAccounts && (
-        <div className="rounded-2xl bg-white px-8 py-14 text-center shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+        <div className="rounded-2xl bg-white px-8 py-14 text-center shadow-card-md">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f0f8]">
             <PlusCircle className="text-[#0060ad]" size={28} />
           </div>
@@ -216,9 +217,9 @@ export default function DashboardPage() {
 
       {/* Two-column: recent transactions + próximos cobros */}
       {hasAccounts && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
           {/* Últimos movimientos */}
-          <div className="rounded-2xl bg-white p-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+          <div className="rounded-2xl bg-white p-6 shadow-card-md">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-base font-bold text-[#303333]">Últimos movimientos</h2>
               <Link
@@ -243,7 +244,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Próximos cobros */}
-          <div className="rounded-2xl bg-white p-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+          <div className="rounded-2xl bg-white p-6 shadow-card-md">
             <h2 className="mb-5 text-base font-bold text-[#303333]">Próximos cobros</h2>
 
             {(data?.upcoming_charges.length ?? 0) === 0 ? (
@@ -384,6 +385,37 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Active goal widget */}
+      {data?.active_goal && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-[#5d605f]">Objetivo activo</h2>
+          <Link
+            href="/goals"
+            className="block rounded-2xl bg-white p-4 shadow-card hover:shadow-md transition-shadow"
+            style={{ borderLeft: `4px solid ${data.active_goal.color}` }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-[#303333]">{data.active_goal.name}</span>
+              <span className="text-sm font-semibold text-[#0060ad]">
+                {data.active_goal.percentage.toFixed(0)}%
+              </span>
+            </div>
+            <div className="mt-2">
+              <GoalProgressBar percentage={data.active_goal.percentage} height="h-2" />
+            </div>
+            <div className="mt-1.5 text-xs text-[#9ca3af]">
+              {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(
+                parseFloat(data.active_goal.current_amount),
+              )}{' '}
+              /{' '}
+              {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(
+                parseFloat(data.active_goal.target_amount),
+              )}
+            </div>
+          </Link>
+        </section>
       )}
     </div>
   );

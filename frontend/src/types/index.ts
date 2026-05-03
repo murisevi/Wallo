@@ -1,8 +1,10 @@
 // Shared TypeScript interfaces matching backend Pydantic schemas.
 
 import type { Category } from '@/types/categories';
+import type { SavingsGoal } from '@/types/goals';
 
 export type { Category } from '@/types/categories';
+export type { SavingsGoal } from '@/types/goals';
 
 export interface User {
   id: string;
@@ -99,6 +101,7 @@ export interface Dashboard {
   recent_transactions: Transaction[];
   last_synced_at: string | null;
   upcoming_charges: RecurringCharge[];
+  active_goal: SavingsGoal | null;
 }
 
 export interface BankInstitution {
