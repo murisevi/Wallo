@@ -1,5 +1,13 @@
-import type { Budget, BudgetCreate, BudgetSummary, BudgetUpdate } from '@/types/budget';
+import type { Budget, BudgetCreate, BudgetSummary, BudgetUpdate, CopySource } from '@/types/budget';
 import type { Category, CategoryCorrectionResponse } from '@/types/categories';
+import type {
+  ContributionCreate,
+  GoalContribution,
+  GoalCreate,
+  GoalSummary,
+  GoalUpdate,
+  SavingsGoal,
+} from '@/types/goals';
 import type { RecurringCharge } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
@@ -122,6 +130,14 @@ export const budgetApi = {
   deleteBudget(id: string): Promise<void> {
     return api.delete<void>(`/budgets/${id}`);
   },
+
+  getCopySource(month: number, year: number): Promise<CopySource> {
+    return api.get<CopySource>(`/budgets/copy-source?month=${month}&year=${year}`);
+  },
+
+  copyPrevious(month: number, year: number): Promise<BudgetSummary> {
+    return api.post<BudgetSummary>(`/budgets/copy-previous?month=${month}&year=${year}`);
+  },
 };
 
 // ─── Category endpoints ──────────────────────────────────────────────────────
@@ -177,6 +193,39 @@ export const recurringApi = {
 
   delete(id: string): Promise<void> {
     return api.delete<void>(`/recurring-charges/${id}`);
+  },
+};
+
+// ─── Goals endpoints ─────────────────────────────────────────────────────────
+
+export const goalsApi = {
+  list(status?: string): Promise<GoalSummary> {
+    const qs = status && status !== 'all' ? `?status=${status}` : '';
+    return api.get<GoalSummary>(`/goals/${qs}`);
+  },
+
+  get(id: string): Promise<SavingsGoal> {
+    return api.get<SavingsGoal>(`/goals/${id}`);
+  },
+
+  create(data: GoalCreate): Promise<SavingsGoal> {
+    return api.post<SavingsGoal>('/goals/', data);
+  },
+
+  update(id: string, data: GoalUpdate): Promise<SavingsGoal> {
+    return api.patch<SavingsGoal>(`/goals/${id}`, data);
+  },
+
+  delete(id: string): Promise<void> {
+    return api.delete<void>(`/goals/${id}`);
+  },
+
+  addContribution(id: string, data: ContributionCreate): Promise<SavingsGoal> {
+    return api.post<SavingsGoal>(`/goals/${id}/contributions`, data);
+  },
+
+  getContributions(id: string): Promise<GoalContribution[]> {
+    return api.get<GoalContribution[]>(`/goals/${id}/contributions`);
   },
 };
 
