@@ -1,4 +1,4 @@
-import type { AccountSummary } from '@/types';
+﻿import type { AccountSummary } from '@/types';
 
 interface AccountCardProps {
   account: AccountSummary;
@@ -22,7 +22,7 @@ export function AccountCard({ account }: AccountCardProps) {
   const isPositive = account.balance != null && parseFloat(account.balance) >= 0;
 
   return (
-    <div className="flex flex-col rounded-2xl bg-white p-5 shadow-[0_4px_16px_rgba(48,51,51,0.06)] transition-shadow hover:shadow-[0_8px_24px_rgba(48,51,51,0.1)]">
+    <div className="flex flex-col rounded-2xl bg-white p-5 shadow-card-md transition-shadow hover:shadow-card-lg">
       {/* Header row: bank name + currency badge */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

@@ -1,4 +1,4 @@
-export default function DashboardLoading() {
+﻿export default function DashboardLoading() {
   return (
     <div className="space-y-8">
       {/* Greeting skeleton */}
@@ -19,7 +19,7 @@ export default function DashboardLoading() {
         {[0, 1].map((i) => (
           <div
             key={i}
-            className="animate-pulse rounded-2xl bg-white p-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]"
+            className="animate-pulse rounded-2xl bg-white p-6 shadow-card-md"
           >
             <div className="mb-4 h-5 w-36 rounded-full bg-[#f3f4f3]" />
             <div className="h-24 w-full rounded-xl bg-[#f3f4f3]" />

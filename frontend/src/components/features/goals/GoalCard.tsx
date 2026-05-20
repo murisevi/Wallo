@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { GoalProgressBar } from './GoalProgressBar';
 import { ContributionPanel } from './ContributionPanel';
+import { ContributionHistory } from './ContributionHistory';
 import type { SavingsGoal } from '@/types/goals';
 
 const GOAL_ICONS: Record<string, LucideIcon> = {
@@ -131,7 +132,7 @@ export function GoalCard({ goal, onContribute, onEdit, onDelete, isContributing 
                 className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#cce8d7] py-2 text-sm font-medium text-[#0060ad] hover:border-[#0060ad] hover:bg-[#f0f7ff] transition-colors"
               >
                 <Plus size={14} />
-                Añadir
+                Reservar
               </button>
             )}
           </>
@@ -142,6 +143,11 @@ export function GoalCard({ goal, onContribute, onEdit, onDelete, isContributing 
             ¡Objetivo cumplido!
           </div>
         )}
+
+        <ContributionHistory
+          goalId={goal.id}
+          recentContributions={goal.recent_contributions}
+        />
       </div>
     </div>
   );

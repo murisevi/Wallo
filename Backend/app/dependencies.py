@@ -54,7 +54,7 @@ async def get_current_user(
     return user
 
 
-CurrentUser = Annotated["User", Depends(get_current_user)]  # noqa: F821
+CurrentUser = Annotated[Any, Depends(get_current_user)]
 
 
 async def get_redis(request: Request) -> Any | None:

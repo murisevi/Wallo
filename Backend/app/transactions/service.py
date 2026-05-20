@@ -10,6 +10,7 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.banking.client import EnableBankingClient
 from app.banking.models import BankAccount, BankConnection
@@ -24,6 +25,8 @@ from app.transactions.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+SuggestedCategory = aliased(Category)
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +64,26 @@ def _signed_amount(raw: Decimal | None, indicator: str | None) -> Decimal | None
     if indicator == "DBIT":
         return -abs(raw)
     return abs(raw)
+
+
+def _transaction_response(
+    txn: Transaction,
+    iban: str | None = None,
+    category: Category | None = None,
+    suggested_category: Category | None = None,
+) -> TransactionResponse:
+    """Build a response with confirmed and suggested category details."""
+    resp = TransactionResponse.model_validate(txn)
+    resp.account_iban = iban
+    if category is not None:
+        resp.category_name = category.name
+        resp.category_icon = category.icon
+        resp.category = CategoryResponse.model_validate(category)
+    if suggested_category is not None:
+        resp.suggested_category_name = suggested_category.name
+        resp.suggested_category_icon = suggested_category.icon
+        resp.suggested_category = CategoryResponse.model_validate(suggested_category)
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +211,7 @@ async def sync_transactions(
             creditor_name=raw.get("creditor_name"),
             credit_debit_indicator=indicator,
             bank_transaction_code=raw.get("bank_transaction_code"),
+            merchant_category_code=raw.get("merchant_category_code"),
             status=raw.get("status") or "BOOK",
         )
         db.add(txn)
@@ -281,10 +305,14 @@ async def get_transactions(
     # Data query — join BankAccount + BankConnection + Category (full object)
     offset = (page - 1) * page_size
     stmt = (
-        select(Transaction, BankAccount.iban, Category)
+        select(Transaction, BankAccount.iban, Category, SuggestedCategory)
         .join(BankAccount, Transaction.account_id == BankAccount.id)
         .join(BankConnection, BankAccount.connection_id == BankConnection.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
+        .outerjoin(
+            SuggestedCategory,
+            Transaction.suggested_category_id == SuggestedCategory.id,
+        )
         .where(*filters, disconnected_filter)
         .order_by(Transaction.date.desc(), Transaction.created_at.desc())
         .offset(offset)
@@ -293,14 +321,15 @@ async def get_transactions(
     rows = (await db.execute(stmt)).all()
 
     items: list[TransactionResponse] = []
-    for txn, iban, category_obj in rows:
-        resp = TransactionResponse.model_validate(txn)
-        resp.account_iban = iban
-        if category_obj is not None:
-            resp.category_name = category_obj.name
-            resp.category_icon = category_obj.icon
-            resp.category = CategoryResponse.model_validate(category_obj)
-        items.append(resp)
+    for txn, iban, category_obj, suggested_category_obj in rows:
+        items.append(
+            _transaction_response(
+                txn,
+                iban=iban,
+                category=category_obj,
+                suggested_category=suggested_category_obj,
+            )
+        )
 
     return TransactionListResponse(
         transactions=items,
@@ -352,9 +381,16 @@ async def update_transaction_category(
                 detail="Category not found",
             )
         txn.category_id = data.category_id
+        txn.confidence_score = 1.0
+        txn.categorization_method = "manual"
     else:
         txn.category_id = None
+        txn.confidence_score = 0.0
+        txn.categorization_method = None
         category = None
+    txn.suggested_category_id = None
+    txn.suggested_confidence_score = None
+    txn.suggested_categorization_method = None
 
     await db.flush()
 
@@ -362,9 +398,4 @@ async def update_transaction_category(
     iban_stmt = select(BankAccount.iban).where(BankAccount.id == txn.account_id)
     iban: str | None = (await db.execute(iban_stmt)).scalar_one_or_none()
 
-    resp = TransactionResponse.model_validate(txn)
-    resp.account_iban = iban
-    if category is not None:
-        resp.category_name = category.name
-        resp.category_icon = category.icon
-    return resp
+    return _transaction_response(txn, iban=iban, category=category)

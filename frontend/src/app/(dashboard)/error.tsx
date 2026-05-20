@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
@@ -15,7 +15,7 @@ export default function DashboardError({ error, reset }: DashboardErrorProps) {
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white px-8 py-12 text-center shadow-[0_20px_40px_rgba(48,51,51,0.08)]">
+      <div className="w-full max-w-sm rounded-3xl bg-white px-8 py-12 text-center shadow-card-lg">
         <AlertCircle className="mx-auto text-red-400" size={36} />
         <h2 className="mt-4 text-base font-bold text-[#303333]">Algo salió mal</h2>
         <p className="mt-2 text-sm text-[#5d605f]">

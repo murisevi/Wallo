@@ -214,6 +214,35 @@ class TestDismiss:
         charges = await svc.get_upcoming(db, user.id)
         assert len(charges) == 0  # dismissed not in upcoming
 
+    async def test_dismiss_possible_charge_blocks_future_detection(
+        self, db: AsyncSession, user: User, account: BankAccount
+    ):
+        """A false positive marked as dismissed should not be recreated."""
+        txns = [
+            make_txn(account, user, BASE + timedelta(days=30 * i)) for i in range(3)
+        ]
+        for txn in txns:
+            db.add(txn)
+        await db.flush()
+
+        await svc.detect_and_upsert(db, user.id)
+        charges = await svc.get_upcoming(db, user.id)
+        assert len(charges) == 1
+        assert charges[0].status == "possible"
+
+        await svc.dismiss(db, user.id, charges[0].id)
+        await svc.detect_and_upsert(db, user.id)
+
+        assert await svc.get_upcoming(db, user.id) == []
+        dismissed = await svc.get_by_id(db, user.id, charges[0].id)
+        assert dismissed is not None
+        assert dismissed.status == "dismissed"
+
+    async def test_dismiss_missing_charge_is_noop(
+        self, db: AsyncSession, user: User
+    ):
+        await svc.dismiss(db, user.id, uuid.uuid4())
+
 
 class TestInstallment:
     async def test_set_installment(
@@ -268,3 +297,6 @@ class TestDelete:
 
         result = await svc.get_by_id(db, user.id, charge_id)
         assert result is None
+
+    async def test_delete_missing_charge_is_noop(self, db: AsyncSession, user: User):
+        await svc.delete(db, user.id, uuid.uuid4())

@@ -1,22 +1,16 @@
-"""Categorisation service — orchestrates the 6-layer cascade.
-
-Layer 0: Rule-based type detection (Bizum / ATM cash)
-Layer 1: Merchant mapping  (exact match from user corrections)
-Layer 2: Global merchant dictionary  (static 200+ entry lookup)
-Layer 3: Keyword rules  (generic business-type words)
-Layer 4: ML model prediction
-Layer 5: Confidence threshold  (auto / suggested / uncategorised)
-"""
+"""Categorisation service - orchestrates the transaction classification cascade."""
 
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.categories.keyword_rules import match_keyword_rule
+from app.categories.mcc_mapping import match_mcc_category
 from app.categories.merchant_dictionary import match_known_merchant
 from app.categories.merchant_mapping import MerchantMapping
 from app.categories.ml_categorizer import TransactionCategorizer
@@ -26,17 +20,32 @@ from app.categories.text_cleaner import (
     clean_bank_description,
     detect_transaction_type,
     extract_merchant_key,
+    normalize_text,
 )
 from app.transactions.models import Transaction
 
 logger = logging.getLogger(__name__)
 
-# ── Confidence thresholds ──────────────────────────────────────────────────
-THRESHOLD_AUTO = 0.70  # Above → assign automatically ("ml_auto")
-THRESHOLD_SUGGEST = 0.40  # Between → mark as suggested ("ml_suggested")
-# Below  → leave uncategorised
+# Confidence thresholds:
+# >= 0.70 -> confirmed ML category
+# 0.40..0.70 -> suggestion only (does not affect reports/budgets)
+# < 0.40 -> uncategorised, no suggestion
+THRESHOLD_AUTO = 0.70
+THRESHOLD_SUGGEST = 0.40
+THRESHOLD_AUTO_MARGIN = 0.12
 
-# ── ML singleton ──────────────────────────────────────────────────────────
+BLOCKED_MERCHANT_KEYS: frozenset[str] = frozenset(
+    {
+        "",
+        "K",
+        "K 2",
+        "SAN JUAN",
+        "SERVICIOS",
+        "CAMPANA",
+        "CAMPANA CONTRATO",
+    }
+)
+
 _categorizer: TransactionCategorizer | None = None
 
 
@@ -51,7 +60,14 @@ def get_categorizer() -> TransactionCategorizer:
                 "No trained model found. Run scripts/train_base_model.py first. "
                 "Categorisation will be skipped until a model is available."
             )
-            _categorizer = TransactionCategorizer()  # untrained — is_trained=False
+            _categorizer = TransactionCategorizer()
+        except Exception as exc:
+            logger.warning(
+                "Could not load trained categorisation model (%s). "
+                "Categorisation will skip ML until the model is retrained.",
+                exc,
+            )
+            _categorizer = TransactionCategorizer()
     return _categorizer
 
 
@@ -62,121 +78,164 @@ def reload_categorizer() -> None:
     get_categorizer()
 
 
-# ── Public service functions ───────────────────────────────────────────────
-
-
 async def categorize_transaction(
     db: AsyncSession,
     transaction: Transaction,
     user_id: uuid.UUID,
 ) -> Transaction:
-    """Categorise a single transaction using the 6-layer cascade.
-
-    Layer 0: Rule-based type detection (Bizum / ATM cash)
-    Layer 1: Merchant mapping  (exact match from user corrections)
-    Layer 2: Global merchant dictionary  (static 200+ entry lookup)
-    Layer 3: Keyword rules  (generic business-type words)
-    Layer 4: ML model prediction
-    Layer 5: Confidence threshold  (auto / suggested / uncategorised)
-
-    Mutates `transaction` in-place with category_id, confidence_score,
-    and categorization_method, then returns it.
-    """
-    raw_desc = transaction.description or ""
+    """Categorise a single transaction using deterministic layers before ML."""
+    raw_desc = _categorization_text(transaction)
     amount = float(transaction.amount or 0)
+    category_type = _category_type_for_amount(amount)
 
     cleaned = clean_bank_description(raw_desc)
     merchant_key = extract_merchant_key(cleaned)
-
-    # ── Layer 0: Rule-based type detection ─────────────────────────────────
-    # Bizum and ATM cash are structurally unambiguous — no ML needed.
     tx_type = detect_transaction_type(raw_desc)
 
-    if tx_type == "bizum_received":
-        category = await _resolve_category_by_name(db, "Transferencias recibidas", user_id)
+    income_rule = _income_rule_category_name(raw_desc, amount, tx_type)
+    if income_rule is not None:
+        category = await _resolve_category_by_name(
+            db, income_rule, user_id, category_type="income"
+        )
         if category:
-            transaction.category_id = category.id
-            transaction.confidence_score = 0.85
-            transaction.categorization_method = "rule_based"
-            logger.debug("Rule-based: bizum_received → Transferencias recibidas")
+            _assign_category(transaction, category.id, 0.88, "rule_based")
+            logger.debug("Rule-based income: %s -> %s", cleaned, income_rule)
+            return transaction
+
+    if tx_type == "bizum_received":
+        category = await _resolve_category_by_name(
+            db, "Transferencias recibidas", user_id, category_type="income"
+        )
+        if category:
+            _assign_category(transaction, category.id, 0.85, "rule_based")
+            logger.debug("Rule-based: bizum_received -> Transferencias recibidas")
             return transaction
 
     if tx_type in ("bizum_sent", "cash"):
-        category = await _resolve_category_by_name(db, "Otros gastos", user_id)
+        category = await _resolve_category_by_name(
+            db, "Otros gastos", user_id, category_type="expense"
+        )
         if category:
-            transaction.category_id = category.id
-            transaction.confidence_score = 0.85
-            transaction.categorization_method = "rule_based"
-            logger.debug("Rule-based: %s → Otros gastos", tx_type)
+            _assign_category(transaction, category.id, 0.85, "rule_based")
+            logger.debug("Rule-based: %s -> Otros gastos", tx_type)
             return transaction
 
-    # ── Layer 1: Merchant mapping (user-specific, high precision) ──────────
     mapping = await _lookup_merchant_mapping(db, user_id, merchant_key)
     if mapping:
-        transaction.category_id = mapping.category_id
-        transaction.confidence_score = 1.0
-        transaction.categorization_method = "merchant_map"
-        logger.debug("Merchant map hit: %s → %s", merchant_key, mapping.category_id)
-        return transaction
+        mapped_category = await _resolve_category_by_id(
+            db, mapping.category_id, user_id, category_type=category_type
+        )
+        if mapped_category:
+            _assign_category(transaction, mapping.category_id, 1.0, "merchant_map")
+            logger.debug(
+                "Merchant map hit: %s -> %s",
+                merchant_key,
+                mapping.category_id,
+            )
+            return transaction
 
-    # ── Layer 2: Global merchant dictionary ───────────────────────────────
+    mcc_match = match_mcc_category(transaction.merchant_category_code)
+    if mcc_match:
+        mcc_category_name, mcc_confidence = mcc_match
+        mcc_category = await _resolve_category_by_name(
+            db, mcc_category_name, user_id, category_type=category_type
+        )
+        if mcc_category:
+            _assign_category(transaction, mcc_category.id, mcc_confidence, "mcc")
+            logger.debug(
+                "MCC hit: %s -> %s (%.2f)",
+                transaction.merchant_category_code,
+                mcc_category_name,
+                mcc_confidence,
+            )
+            return transaction
+
     dict_match = match_known_merchant(cleaned)
     if dict_match:
         dict_category_name, dict_confidence = dict_match
-        dict_category = await _resolve_category_by_name(db, dict_category_name, user_id)
+        dict_category = await _resolve_category_by_name(
+            db, dict_category_name, user_id, category_type=category_type
+        )
         if dict_category:
-            transaction.category_id = dict_category.id
-            transaction.confidence_score = dict_confidence
-            transaction.categorization_method = "global_dict"
+            _assign_category(
+                transaction,
+                dict_category.id,
+                dict_confidence,
+                "global_dict",
+            )
             logger.debug(
-                "Global dict hit: %s → %s (%.2f)", cleaned, dict_category_name, dict_confidence
+                "Global dict hit: %s -> %s (%.2f)",
+                cleaned,
+                dict_category_name,
+                dict_confidence,
             )
             return transaction
 
-    # ── Layer 3: Keyword rules ─────────────────────────────────────────────
     kw_match = match_keyword_rule(cleaned)
     if kw_match:
         kw_category_name, kw_confidence = kw_match
-        kw_category = await _resolve_category_by_name(db, kw_category_name, user_id)
+        kw_category = await _resolve_category_by_name(
+            db, kw_category_name, user_id, category_type=category_type
+        )
         if kw_category:
-            transaction.category_id = kw_category.id
-            transaction.confidence_score = kw_confidence
-            transaction.categorization_method = "keyword_rule"
+            if kw_confidence >= THRESHOLD_AUTO:
+                _assign_category(
+                    transaction,
+                    kw_category.id,
+                    kw_confidence,
+                    "keyword_rule",
+                )
+            else:
+                _assign_suggestion(
+                    transaction,
+                    kw_category.id,
+                    kw_confidence,
+                    "keyword_suggested",
+                )
             logger.debug(
-                "Keyword rule hit: %s → %s (%.2f)", cleaned, kw_category_name, kw_confidence
+                "Keyword rule hit: %s -> %s (%.2f)",
+                cleaned,
+                kw_category_name,
+                kw_confidence,
             )
             return transaction
 
-    # ── Layer 4: ML prediction ─────────────────────────────────────────────
     categorizer = get_categorizer()
     if categorizer.is_trained:
-        predicted_name, confidence = categorizer.predict(raw_desc, amount)
-        category = await _resolve_category_by_name(db, predicted_name, user_id)
+        if hasattr(categorizer, "predict_with_margin"):
+            predicted_name, confidence, margin = categorizer.predict_with_margin(
+                raw_desc,
+                amount,
+                bank_transaction_code=transaction.bank_transaction_code,
+                merchant_category_code=transaction.merchant_category_code,
+            )
+        else:
+            predicted_name, confidence = categorizer.predict(raw_desc, amount)
+            margin = 1.0
+        category = await _resolve_category_by_name(
+            db, predicted_name, user_id, category_type=category_type
+        )
 
         if category:
-            transaction.category_id = category.id
-            transaction.confidence_score = confidence
-
-            # ── Layer 3: Confidence threshold ──────────────────────────────
-            if confidence >= THRESHOLD_AUTO:
-                transaction.categorization_method = "ml_auto"
+            if confidence >= THRESHOLD_AUTO and margin >= THRESHOLD_AUTO_MARGIN:
+                _assign_category(transaction, category.id, confidence, "ml_auto")
+            elif confidence >= THRESHOLD_SUGGEST:
+                _assign_suggestion(transaction, category.id, confidence, "ml_suggested")
             else:
-                # Covers THRESHOLD_SUGGEST <= conf < THRESHOLD_AUTO and below
-                transaction.categorization_method = "ml_suggested"
+                _clear_category_and_suggestion(transaction)
 
             logger.debug(
-                "ML prediction: %s → %s (%.2f, %s)",
+                "ML prediction: %s -> %s (%.2f, margin=%.2f, method=%s, suggestion=%s)",
                 cleaned,
                 predicted_name,
                 confidence,
+                margin,
                 transaction.categorization_method,
+                transaction.suggested_categorization_method,
             )
             return transaction
 
-    # ── Fallback: uncategorised ────────────────────────────────────────────
-    transaction.category_id = None
-    transaction.confidence_score = 0.0
-    transaction.categorization_method = None
+    _clear_category_and_suggestion(transaction)
     logger.debug("No categorisation for: %s", cleaned)
     return transaction
 
@@ -186,7 +245,7 @@ async def categorize_batch(
     transactions: list[Transaction],
     user_id: uuid.UUID,
 ) -> list[Transaction]:
-    """Categorise a list of transactions.  Returns the same list (mutated in-place)."""
+    """Categorise a list of transactions. Returns the same list mutated in-place."""
     for tx in transactions:
         await categorize_transaction(db, tx, user_id)
     return transactions
@@ -198,24 +257,7 @@ async def correct_category(
     transaction_id: uuid.UUID,
     new_category_id: uuid.UUID,
 ) -> tuple[Transaction, int]:
-    """Process a user correction.
-
-    Updates the transaction, persists a CategoryCorrection for future
-    retraining, upserts the merchant mapping, and immediately propagates
-    the correction to every other non-manually-corrected transaction that
-    shares the same merchant key.
-
-    Propagation is O(n_descriptions) in Python — no ML inference needed,
-    ~30 ms for a typical dataset of 500 transactions.
-
-    Returns:
-        (transaction, also_updated) where also_updated is the count of
-        additional transactions updated beyond the one explicitly corrected.
-
-    Raises:
-        ValueError: If the transaction does not exist.
-    """
-    # 1. Fetch transaction (no user filter — service trusts its callers)
+    """Process a user correction and teach the merchant mapping layer."""
     result = await db.execute(
         select(Transaction).where(Transaction.id == transaction_id)
     )
@@ -223,44 +265,55 @@ async def correct_category(
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
 
-    # 2. Store correction for future retraining
-    cleaned = clean_bank_description(transaction.description or "")
+    correction_text = _categorization_text(transaction)
+    cleaned = clean_bank_description(correction_text)
     merchant_key = extract_merchant_key(cleaned)
+    mapping_conflict = await _has_conflicting_correction(
+        db,
+        user_id,
+        merchant_key,
+        new_category_id,
+    )
 
     correction = CategoryCorrection(
         user_id=user_id,
         transaction_id=transaction_id,
-        original_description=transaction.description or "",
+        original_description=transaction.description or correction_text,
         cleaned_merchant=merchant_key,
-        amount=float(transaction.amount or 0),
-        predicted_category_id=transaction.category_id,
+        amount=transaction.amount or 0,
+        predicted_category_id=(
+            transaction.category_id or transaction.suggested_category_id
+        ),
         corrected_category_id=new_category_id,
     )
     db.add(correction)
 
-    # 3. Update transaction fields
-    transaction.category_id = new_category_id
-    transaction.confidence_score = 1.0
-    transaction.categorization_method = "manual"
+    _assign_category(transaction, new_category_id, 1.0, "manual")
     transaction.is_manually_corrected = True
 
-    # 4. Upsert merchant mapping so it fires on next sync
-    await _upsert_merchant_mapping(db, user_id, merchant_key, new_category_id)
-
-    # 5. Propagate immediately to other existing transactions with the same merchant
-    also_updated = await _recategorize_same_merchant(
+    await _upsert_merchant_mapping(
         db,
-        user_id=user_id,
-        merchant_key=merchant_key,
-        category_id=new_category_id,
-        exclude_transaction_id=transaction_id,
+        user_id,
+        merchant_key,
+        new_category_id,
+        is_ambiguous=mapping_conflict,
     )
+
+    also_updated = 0
+    if not mapping_conflict and _can_use_merchant_key(merchant_key):
+        also_updated = await _recategorize_same_merchant(
+            db,
+            user_id=user_id,
+            merchant_key=merchant_key,
+            category_id=new_category_id,
+            exclude_transaction_id=transaction_id,
+        )
 
     await db.flush()
     await db.refresh(transaction)
 
     logger.info(
-        "Category corrected: tx=%s, merchant=%s → category=%s (%d additional updated)",
+        "Category corrected: tx=%s, merchant=%s -> category=%s (%d additional updated)",
         transaction_id,
         merchant_key,
         new_category_id,
@@ -269,21 +322,49 @@ async def correct_category(
     return transaction, also_updated
 
 
+async def accept_suggestions(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    transaction_ids: list[uuid.UUID],
+) -> dict[str, int]:
+    """Accept suggested categories for a bounded list of transactions."""
+    accepted = 0
+    skipped = 0
+    total_also_updated = 0
+
+    for transaction_id in transaction_ids:
+        result = await db.execute(
+            select(Transaction).where(
+                Transaction.id == transaction_id,
+                Transaction.user_id == user_id,
+            )
+        )
+        transaction = result.scalar_one_or_none()
+        if transaction is None or transaction.suggested_category_id is None:
+            skipped += 1
+            continue
+
+        _transaction, also_updated = await correct_category(
+            db,
+            user_id,
+            transaction_id,
+            transaction.suggested_category_id,
+        )
+        accepted += 1
+        total_also_updated += also_updated
+
+    return {
+        "accepted": accepted,
+        "skipped": skipped,
+        "also_updated": total_also_updated,
+    }
+
+
 async def recategorize_all_transactions(
     db: AsyncSession,
     user_id: uuid.UUID,
 ) -> dict:
-    """Re-run the categorization cascade on all non-manually-corrected transactions.
-
-    Transactions with ``is_manually_corrected=True`` are skipped — they represent
-    explicit user feedback used as training data and must not be overwritten.
-
-    Returns a summary dict with keys:
-        total, rule_based, merchant_map, global_dict, keyword_rule,
-        ml_auto, ml_suggested, uncategorized
-    """
-    from app.transactions.models import Transaction  # local import avoids circular dep
-
+    """Re-run the categorization cascade on all non-manual transactions."""
     stmt = select(Transaction).where(
         Transaction.user_id == user_id,
         Transaction.is_manually_corrected.is_(False),
@@ -294,14 +375,17 @@ async def recategorize_all_transactions(
     if not transactions:
         return {
             "total": 0,
+            "rule_based": 0,
             "merchant_map": 0,
+            "mcc": 0,
+            "global_dict": 0,
+            "keyword_rule": 0,
+            "keyword_suggested": 0,
             "ml_auto": 0,
             "ml_suggested": 0,
             "uncategorized": 0,
         }
 
-    # Re-run the full 3-layer cascade on every eligible transaction.
-    # categorize_transaction mutates each Transaction in-place.
     for txn in transactions:
         await categorize_transaction(db, txn, user_id)
 
@@ -315,6 +399,7 @@ async def recategorize_all_transactions(
         "merchant_map": sum(
             1 for t in transactions if t.categorization_method == "merchant_map"
         ),
+        "mcc": sum(1 for t in transactions if t.categorization_method == "mcc"),
         "global_dict": sum(
             1 for t in transactions if t.categorization_method == "global_dict"
         ),
@@ -325,7 +410,14 @@ async def recategorize_all_transactions(
             1 for t in transactions if t.categorization_method == "ml_auto"
         ),
         "ml_suggested": sum(
-            1 for t in transactions if t.categorization_method == "ml_suggested"
+            1
+            for t in transactions
+            if t.suggested_categorization_method == "ml_suggested"
+        ),
+        "keyword_suggested": sum(
+            1
+            for t in transactions
+            if t.suggested_categorization_method == "keyword_suggested"
         ),
         "uncategorized": sum(1 for t in transactions if t.category_id is None),
     }
@@ -343,7 +435,7 @@ async def get_user_categories(
     db: AsyncSession,
     user_id: uuid.UUID,
 ) -> list[CategoryResponse]:
-    """Return all categories available to a user: global (user_id IS NULL) + custom."""
+    """Return all categories available to a user: global + custom."""
     stmt = (
         select(Category)
         .where(or_(Category.user_id.is_(None), Category.user_id == user_id))
@@ -376,15 +468,30 @@ async def create_custom_category(
     return category
 
 
-# ── Private helpers ────────────────────────────────────────────────────────
-
-
 async def _lookup_merchant_mapping(
     db: AsyncSession,
     user_id: uuid.UUID,
     merchant_key: str,
 ) -> MerchantMapping | None:
-    """Return the user's merchant→category mapping for *merchant_key*, or None."""
+    if not _can_use_merchant_key(merchant_key):
+        return None
+    result = await db.execute(
+        select(MerchantMapping).where(
+            MerchantMapping.user_id == user_id,
+            MerchantMapping.merchant_name == merchant_key,
+            MerchantMapping.is_ambiguous.is_(False),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _lookup_any_merchant_mapping(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    merchant_key: str,
+) -> MerchantMapping | None:
+    if not _can_use_merchant_key(merchant_key):
+        return None
     result = await db.execute(
         select(MerchantMapping).where(
             MerchantMapping.user_id == user_id,
@@ -398,14 +505,31 @@ async def _resolve_category_by_name(
     db: AsyncSession,
     name: str,
     user_id: uuid.UUID,
+    category_type: str | None = None,
 ) -> Category | None:
-    """Find a category by exact name, scoped to global or user-owned categories."""
-    result = await db.execute(
-        select(Category).where(
-            Category.name == name,
-            or_(Category.user_id.is_(None), Category.user_id == user_id),
-        )
-    )
+    filters = [
+        Category.name == name,
+        or_(Category.user_id.is_(None), Category.user_id == user_id),
+    ]
+    if category_type is not None:
+        filters.append(Category.type == category_type)
+    result = await db.execute(select(Category).where(*filters))
+    return result.scalar_one_or_none()
+
+
+async def _resolve_category_by_id(
+    db: AsyncSession,
+    category_id: uuid.UUID,
+    user_id: uuid.UUID,
+    category_type: str | None = None,
+) -> Category | None:
+    filters = [
+        Category.id == category_id,
+        or_(Category.user_id.is_(None), Category.user_id == user_id),
+    ]
+    if category_type is not None:
+        filters.append(Category.type == category_type)
+    result = await db.execute(select(Category).where(*filters))
     return result.scalar_one_or_none()
 
 
@@ -416,19 +540,17 @@ async def _recategorize_same_merchant(
     category_id: uuid.UUID,
     exclude_transaction_id: uuid.UUID,
 ) -> int:
-    """Update all non-manually-corrected transactions that share *merchant_key*.
-
-    Avoids the ML pipeline entirely — just fetches descriptions, filters in
-    Python with extract_merchant_key(), and issues a single bulk UPDATE.
-    Benchmarked at ~30 ms for 500 transactions.
-
-    Returns the number of transactions updated.
-    """
-    if not merchant_key:
+    """Update all non-manual transactions that share a merchant key."""
+    if not _can_use_merchant_key(merchant_key):
         return 0
 
-    # Fetch only the columns we need — no ML, no relationships
-    stmt = select(Transaction.id, Transaction.description).where(
+    stmt = select(
+        Transaction.id,
+        Transaction.description,
+        Transaction.creditor_name,
+        Transaction.debtor_name,
+        Transaction.bank_transaction_code,
+    ).where(
         Transaction.user_id == user_id,
         Transaction.is_manually_corrected.is_(False),
         Transaction.id != exclude_transaction_id,
@@ -437,8 +559,13 @@ async def _recategorize_same_merchant(
 
     matching_ids = [
         tx_id
-        for tx_id, description in rows
-        if extract_merchant_key(clean_bank_description(description or "")) == merchant_key
+        for tx_id, description, creditor, debtor, bank_code in rows
+        if extract_merchant_key(
+            clean_bank_description(
+                _join_text_parts(description, creditor, debtor, bank_code)
+            )
+        )
+        == merchant_key
     ]
 
     if not matching_ids:
@@ -451,11 +578,14 @@ async def _recategorize_same_merchant(
             category_id=category_id,
             confidence_score=1.0,
             categorization_method="merchant_map",
+            suggested_category_id=None,
+            suggested_confidence_score=None,
+            suggested_categorization_method=None,
         )
     )
 
     logger.info(
-        "Same-merchant propagation: merchant=%s → %d transactions updated",
+        "Same-merchant propagation: merchant=%s -> %d transactions updated",
         merchant_key,
         len(matching_ids),
     )
@@ -467,17 +597,136 @@ async def _upsert_merchant_mapping(
     user_id: uuid.UUID,
     merchant_key: str,
     category_id: uuid.UUID,
+    *,
+    is_ambiguous: bool = False,
 ) -> None:
-    """Create or update the merchant→category mapping, incrementing confidence."""
-    existing = await _lookup_merchant_mapping(db, user_id, merchant_key)
+    """Create or update the merchant -> category mapping."""
+    if not _can_use_merchant_key(merchant_key):
+        return None
+    existing = await _lookup_any_merchant_mapping(db, user_id, merchant_key)
     if existing:
-        existing.category_id = category_id
-        existing.confidence += 1
+        if is_ambiguous:
+            existing.is_ambiguous = True
+            existing.confidence = 0
+        else:
+            existing.category_id = category_id
+            existing.confidence += 1
+            existing.is_ambiguous = False
     else:
         db.add(
             MerchantMapping(
                 user_id=user_id,
                 merchant_name=merchant_key,
                 category_id=category_id,
+                confidence=0 if is_ambiguous else 1,
+                is_ambiguous=is_ambiguous,
             )
         )
+
+
+async def _has_conflicting_correction(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    merchant_key: str,
+    category_id: uuid.UUID,
+) -> bool:
+    if not _can_use_merchant_key(merchant_key):
+        return False
+    result = await db.execute(
+        select(CategoryCorrection.id).where(
+            CategoryCorrection.user_id == user_id,
+            CategoryCorrection.cleaned_merchant == merchant_key,
+            CategoryCorrection.corrected_category_id != category_id,
+        )
+    )
+    return result.first() is not None
+
+
+def _category_type_for_amount(amount: float) -> str:
+    return "income" if amount > 0 else "expense"
+
+
+def _join_text_parts(*parts: object) -> str:
+    return " ".join(str(part).strip() for part in parts if part)
+
+
+def _categorization_text(transaction: Transaction) -> str:
+    """Build the richest safe text available for categorisation."""
+    return _join_text_parts(
+        transaction.description,
+        transaction.creditor_name,
+        transaction.debtor_name,
+        transaction.bank_transaction_code,
+        transaction.merchant_category_code,
+    )
+
+
+def _can_use_merchant_key(merchant_key: str) -> bool:
+    normalized = normalize_text(merchant_key)
+    if normalized in BLOCKED_MERCHANT_KEYS:
+        return False
+    words = normalized.split()
+    return any(len(word) > 2 for word in words)
+
+
+def _income_rule_category_name(
+    raw_desc: str,
+    amount: float,
+    tx_type: str,
+) -> str | None:
+    """Return a deterministic income category for unambiguous patterns."""
+    if amount <= 0:
+        return None
+
+    normalized = normalize_text(raw_desc)
+    if re.search(r"\b(?:ABONO\s+)?NOMINA\b|\bSALARIO\b", normalized):
+        return "Nómina"
+    if re.search(
+        r"\b(?:DEVOLUCION|REEMBOLSO|RETROCESION|BONIFICACION|LIQUIDACION)\b",
+        normalized,
+    ):
+        return "Devoluciones"
+    if tx_type in {"transfer", "bizum_received"} or re.search(
+        r"\bTRANSFERENCIA\b", normalized
+    ):
+        return "Transferencias recibidas"
+    return None
+
+
+def _assign_category(
+    transaction: Transaction,
+    category_id: uuid.UUID,
+    confidence: float,
+    method: str,
+) -> None:
+    transaction.category_id = category_id
+    transaction.confidence_score = confidence
+    transaction.categorization_method = method
+    _clear_suggestion(transaction)
+
+
+def _assign_suggestion(
+    transaction: Transaction,
+    category_id: uuid.UUID,
+    confidence: float,
+    method: str,
+) -> None:
+    transaction.category_id = None
+    transaction.confidence_score = 0.0
+    transaction.categorization_method = None
+    transaction.suggested_category_id = category_id
+    transaction.suggested_confidence_score = confidence
+    transaction.suggested_categorization_method = method
+
+
+def _clear_suggestion(transaction: Transaction) -> None:
+    transaction.suggested_category_id = None
+    transaction.suggested_confidence_score = None
+    transaction.suggested_categorization_method = None
+
+
+def _clear_category_and_suggestion(transaction: Transaction) -> None:
+    transaction.category_id = None
+    transaction.confidence_score = 0.0
+    transaction.categorization_method = None
+    _clear_suggestion(transaction)

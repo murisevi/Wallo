@@ -56,6 +56,7 @@ MOCK_TRANSACTIONS = [
         "creditor_name": None,
         "remittance_information": ["Salario Marzo 2026"],
         "bank_transaction_code": None,
+        "merchant_category_code": None,
         "transaction_id": None,
         "transaction_date": None,
     },
@@ -71,6 +72,7 @@ MOCK_TRANSACTIONS = [
         "creditor_name": "Mercadona",
         "remittance_information": "Compra supermercado",
         "bank_transaction_code": "PMNT",
+        "merchant_category_code": "5411",
         "transaction_id": None,
         "transaction_date": None,
     },
@@ -86,6 +88,7 @@ MOCK_TRANSACTIONS = [
         "creditor_name": "Netflix",
         "remittance_information": None,
         "bank_transaction_code": None,
+        "merchant_category_code": None,
         "transaction_id": None,
         "transaction_date": None,
     },
@@ -444,6 +447,24 @@ async def test_account_iban_present_in_response(
     resp = await client.get("/api/v1/transactions/", headers=auth(token))
     for txn in resp.json()["transactions"]:
         assert txn["account_iban"] == "ES7620770024003102575766"
+
+
+@pytest.mark.asyncio
+async def test_bank_detail_fields_present_in_response(
+    client: AsyncClient, override_eb_client: MagicMock
+) -> None:
+    token = await register_and_login(client)
+    await connect_bank(client, token)
+
+    resp = await client.get(
+        "/api/v1/transactions/?search=supermercado",
+        headers=auth(token),
+    )
+    txn = resp.json()["transactions"][0]
+
+    assert txn["entry_reference"] == "ref-002"
+    assert txn["bank_transaction_code"] == "PMNT"
+    assert txn["merchant_category_code"] == "5411"
 
 
 # ---------------------------------------------------------------------------

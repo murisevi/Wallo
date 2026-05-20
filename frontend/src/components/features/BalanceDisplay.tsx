@@ -1,4 +1,4 @@
-interface BalanceDisplayProps {
+﻿interface BalanceDisplayProps {
   amount: string;
   currency: string;
   accountCount: number;
@@ -19,7 +19,7 @@ export function BalanceDisplay({ amount, currency, accountCount }: BalanceDispla
   const formatted = formatCurrency(amount, currency);
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 px-8 py-12 text-center shadow-[0_8px_32px_rgba(245,158,11,0.25)]">
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 px-8 py-12 text-center shadow-amber">
       {/* Decorative rings */}
       <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10" />
       <div className="pointer-events-none absolute -bottom-24 -left-24 h-80 w-80 rounded-full bg-white/5" />

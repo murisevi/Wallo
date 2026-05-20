@@ -1,4 +1,4 @@
-export default function TransactionsLoading() {
+﻿export default function TransactionsLoading() {
   return (
     <div className="space-y-6">
       {/* Header skeleton */}
@@ -11,7 +11,7 @@ export default function TransactionsLoading() {
       <div className="h-11 animate-pulse rounded-xl bg-[#f3f4f3]" />
 
       {/* Row skeletons */}
-      <div className="rounded-2xl bg-white px-6 shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+      <div className="rounded-2xl bg-white px-6 shadow-card-md">
         {Array.from({ length: 10 }, (_, i) => (
           <div key={i} className="flex animate-pulse items-center justify-between gap-4 py-4 border-b border-[#f3f4f3] last:border-0">
             <div className="flex-1">

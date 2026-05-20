@@ -13,6 +13,7 @@ export interface Category {
 export interface TransactionWithCategory {
   id: string;
   account_id: string;
+  entry_reference: string | null;
   /** Decimal serialised as string — signed: positive = CRDT, negative = DBIT */
   amount: string;
   currency: string;
@@ -23,6 +24,8 @@ export interface TransactionWithCategory {
   debtor_name: string | null;
   creditor_name: string | null;
   credit_debit_indicator: 'CRDT' | 'DBIT';
+  bank_transaction_code: string | null;
+  merchant_category_code: string | null;
   status: string;
   account_iban: string | null;
   // Categorization fields
@@ -30,9 +33,23 @@ export interface TransactionWithCategory {
   category: Category | null;
   category_name: string | null;
   category_icon: string | null;
-  categorization_method: 'merchant_map' | 'ml_auto' | 'ml_suggested' | 'manual' | null;
+  categorization_method:
+    | 'rule_based'
+    | 'merchant_map'
+    | 'mcc'
+    | 'global_dict'
+    | 'keyword_rule'
+    | 'ml_auto'
+    | 'manual'
+    | null;
   confidence_score: number | null;
   is_manually_corrected: boolean;
+  suggested_category_id: string | null;
+  suggested_category: Category | null;
+  suggested_category_name: string | null;
+  suggested_category_icon: string | null;
+  suggested_categorization_method: 'ml_suggested' | 'keyword_suggested' | null;
+  suggested_confidence_score: number | null;
 }
 
 export interface CategoryCorrectionResponse {
@@ -40,4 +57,5 @@ export interface CategoryCorrectionResponse {
   old_category_id: string | null;
   new_category_id: string;
   confidence_score: number;
+  also_updated: number;
 }

@@ -63,7 +63,7 @@ export default function DashboardPage() {
   }
 
   async function handleDeny(id: string) {
-    await recurringApi.delete(id);
+    await recurringApi.dismiss(id);
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
   }
 
@@ -80,7 +80,16 @@ export default function DashboardPage() {
   const accountCount = data?.accounts.length ?? 0;
   const hasAccounts = accountCount > 0;
 
-  const totalBalance =
+  const availableBalance =
+    data?.available_balance != null
+      ? new Intl.NumberFormat('es-ES', {
+          style: 'currency',
+          currency: user?.currency ?? 'EUR',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(parseFloat(data.available_balance))
+      : '—';
+  const connectedBalance =
     data?.total_balance != null
       ? new Intl.NumberFormat('es-ES', {
           style: 'currency',
@@ -88,6 +97,15 @@ export default function DashboardPage() {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(parseFloat(data.total_balance))
+      : '—';
+  const reservedForGoals =
+    data?.reserved_for_goals != null
+      ? new Intl.NumberFormat('es-ES', {
+          style: 'currency',
+          currency: user?.currency ?? 'EUR',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(parseFloat(data.reserved_for_goals))
       : '—';
 
   async function handleSync() {
@@ -179,7 +197,7 @@ export default function DashboardPage() {
           Dinero libre disponible
         </p>
         <p className="relative mt-4 text-6xl font-extrabold tabular-nums tracking-tight text-[#1a3a2a] lg:text-7xl">
-          {totalBalance}
+          {availableBalance}
         </p>
         <div className="relative mt-5 inline-flex items-center gap-1.5 rounded-full bg-white/60 px-4 py-1.5 backdrop-blur-sm">
           <TrendingDown size={13} className="text-[#216c36]" />
@@ -191,6 +209,11 @@ export default function DashboardPage() {
                 : `En ${accountCount} cuentas conectadas`}
           </p>
         </div>
+        {hasAccounts && (
+          <p className="relative mt-3 text-xs font-medium text-[#5d605f]">
+            {connectedBalance} conectados · {reservedForGoals} reservados en objetivos
+          </p>
+        )}
       </div>
 
       {/* No accounts — empty state */}

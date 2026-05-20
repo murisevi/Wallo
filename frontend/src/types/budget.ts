@@ -43,3 +43,11 @@ export interface BudgetCreate {
 export interface BudgetUpdate {
   amount_limit: number;
 }
+
+export interface CopySource {
+  month: number;
+  year: number;
+  budget_count: number;
+  /** Decimal serialised as string */
+  total_limit: string;
+}

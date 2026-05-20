@@ -46,6 +46,7 @@ export interface BankAccount {
 export interface Transaction {
   id: string;
   account_id: string;
+  entry_reference: string | null;
   /** Decimal serialised as string — signed: positive = CRDT, negative = DBIT */
   amount: string;
   currency: string;
@@ -56,6 +57,8 @@ export interface Transaction {
   debtor_name: string | null;
   creditor_name: string | null;
   credit_debit_indicator: 'CRDT' | 'DBIT';
+  bank_transaction_code: string | null;
+  merchant_category_code: string | null;
   status: string;
   account_iban: string | null;
   // Categorization fields
@@ -63,9 +66,23 @@ export interface Transaction {
   category: Category | null;
   category_name: string | null;
   category_icon: string | null;
-  categorization_method: 'merchant_map' | 'ml_auto' | 'ml_suggested' | 'manual' | null;
+  categorization_method:
+    | 'rule_based'
+    | 'merchant_map'
+    | 'mcc'
+    | 'global_dict'
+    | 'keyword_rule'
+    | 'ml_auto'
+    | 'manual'
+    | null;
   confidence_score: number | null;
   is_manually_corrected: boolean;
+  suggested_category_id: string | null;
+  suggested_category: Category | null;
+  suggested_category_name: string | null;
+  suggested_category_icon: string | null;
+  suggested_categorization_method: 'ml_suggested' | 'keyword_suggested' | null;
+  suggested_confidence_score: number | null;
 }
 
 export interface TransactionList {
@@ -96,6 +113,10 @@ export interface RecurringCharge {
 export interface Dashboard {
   /** Decimal serialised as string */
   total_balance: string;
+  /** Decimal serialised as string */
+  reserved_for_goals: string;
+  /** Decimal serialised as string */
+  available_balance: string;
   currency: string;
   accounts: AccountSummary[];
   recent_transactions: Transaction[];

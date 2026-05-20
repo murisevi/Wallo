@@ -252,7 +252,7 @@ async def list_accounts(
     return await svc.get_user_accounts(current_user.id)
 
 
-@router.post("/sync", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/sync", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def sync_all(
     request: Request,
     current_user: CurrentUser,
@@ -276,7 +276,7 @@ async def sync_all(
     )
 
 
-@router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def disconnect_bank(
     connection_id: uuid.UUID,
     current_user: CurrentUser,

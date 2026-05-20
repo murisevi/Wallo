@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { Building2, ChevronDown, Loader2, Moon, Bell, Plus, X, Check } from 'lucide-react';
+import { Building2, ChevronDown, Loader2, Plus, X, Check } from 'lucide-react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/providers/auth-provider';
@@ -57,30 +57,10 @@ function Toast({ message, type, onClose }: ToastProps) {
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <div className="rounded-2xl bg-white p-6 shadow-card">
       <h2 className="mb-5 text-base font-bold text-[#1a1a1a]">{title}</h2>
       {children}
     </div>
-  );
-}
-
-// ─── Toggle ─────────────────────────────────────────────────────────────────
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onChange}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? 'bg-[#0060ad]' : 'bg-gray-300'
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-          checked ? 'translate-x-6' : 'translate-x-1'
-        }`}
-      />
-    </button>
   );
 }
 
@@ -233,7 +213,7 @@ function DisconnectModal({
 
 function SkeletonSection() {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+    <div className="rounded-2xl bg-white p-6 shadow-card">
       <div className="mb-5 h-4 w-36 animate-pulse rounded-full bg-gray-100" />
       <div className="space-y-3">
         <div className="h-10 w-full animate-pulse rounded-xl bg-gray-100" />
@@ -270,8 +250,6 @@ function SettingsContent() {
   const disconnectBank = useDisconnectBank();
 
   // UI state
-  const [darkMode, setDarkMode] = useState(false);
-  const [notifications, setNotifications] = useState(true);
   const [showAddBank, setShowAddBank] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<BankConnection | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -322,7 +300,9 @@ function SettingsContent() {
     <div className="mx-auto max-w-2xl space-y-5">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-[#303333]">Configuración</h1>
-        <p className="mt-1 text-sm text-[#5d605f]">Gestiona tu santuario digital y personaliza tu experiencia financiera.</p>
+        <p className="mt-1 text-sm text-[#5d605f]">
+          Gestiona tu perfil y tus bancos conectados.
+        </p>
       </div>
 
       {/* ── 1. Perfil Personal ─────────────────────────────────────────────── */}
@@ -390,40 +370,7 @@ function SettingsContent() {
         </SectionCard>
       )}
 
-      {/* ── 2. Preferencias ────────────────────────────────────────────────── */}
-      <SectionCard title="Preferencias">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F5]">
-                <Moon size={16} className="text-gray-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#1a1a1a]">Modo Oscuro</p>
-                <p className="text-xs text-gray-400">Cambia el tema de la aplicación</p>
-              </div>
-            </div>
-            <Toggle checked={darkMode} onChange={() => setDarkMode((v) => !v)} />
-          </div>
-
-          <div className="h-px bg-gray-100" />
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F5]">
-                <Bell size={16} className="text-gray-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#1a1a1a]">Notificaciones Inteligentes</p>
-                <p className="text-xs text-gray-400">Alertas de gastos y movimientos</p>
-              </div>
-            </div>
-            <Toggle checked={notifications} onChange={() => setNotifications((v) => !v)} />
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* ── 3. Cuentas Conectadas ───────────────────────────────────────────── */}
+      {/* ── 2. Cuentas Conectadas ───────────────────────────────────────────── */}
       {connectionsLoading ? (
         <SkeletonSection />
       ) : (
@@ -489,45 +436,14 @@ function SettingsContent() {
         </SectionCard>
       )}
 
-      {/* ── 4. Categorías Personalizadas ────────────────────────────────────── */}
-      <SectionCard title="Categorías Personalizadas">
-        <div className="flex flex-wrap gap-2">
-          {['🍴 Restaurantes', '🚌 Transporte', '🛍️ Compras', '🏠 Hogar'].map((cat) => (
-            <span
-              key={cat}
-              className="flex items-center gap-1.5 rounded-full bg-[#F5F5F5] px-4 py-2 text-sm font-medium text-[#1a1a1a]"
-            >
-              {cat}
-              <button className="ml-1 text-gray-400 hover:text-gray-600">
-                <X size={12} />
-              </button>
-            </span>
-          ))}
-          <button className="flex items-center gap-1.5 rounded-full border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-400 hover:bg-[#F5F5F5] transition-colors">
-            <Plus size={13} />
-            Nueva categoría
-          </button>
-        </div>
-      </SectionCard>
-
-      {/* ── 5. Zona de Cuenta ───────────────────────────────────────────────── */}
-      <SectionCard title="Zona de Cuenta">
-        <div className="space-y-3">
-          <button
-            disabled
-            className="flex w-full items-center justify-between rounded-xl bg-[#F5F5F5] px-5 py-3.5 text-sm font-semibold text-gray-400 cursor-not-allowed"
-          >
-            Cambiar Contraseña
-            <span className="text-xs font-normal text-gray-400">Próximamente</span>
-          </button>
-
-          <button
-            onClick={logout}
-            className="flex w-full items-center justify-center rounded-xl bg-red-600 px-5 py-3.5 text-sm font-bold text-white hover:bg-red-700 transition-colors"
-          >
-            Cerrar Sesión
-          </button>
-        </div>
+      {/* ── 3. Sesión ───────────────────────────────────────────────────────── */}
+      <SectionCard title="Sesión">
+        <button
+          onClick={logout}
+          className="flex w-full items-center justify-center rounded-xl bg-red-600 px-5 py-3.5 text-sm font-bold text-white hover:bg-red-700 transition-colors"
+        >
+          Cerrar Sesión
+        </button>
       </SectionCard>
 
       {/* ── Modals ──────────────────────────────────────────────────────────── */}

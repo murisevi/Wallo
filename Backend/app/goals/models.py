@@ -57,9 +57,7 @@ class SavingsGoal(Base):
 
     __table_args__ = (
         CheckConstraint("target_amount > 0", name="target_positive"),
-        CheckConstraint(
-            "current_amount >= 0", name="current_nonnegative"
-        ),
+        CheckConstraint("current_amount >= 0", name="current_nonnegative"),
         CheckConstraint(
             "status IN ('active', 'completed', 'cancelled')",
             name="status",

@@ -37,7 +37,12 @@ async def list_goals_endpoint(
         Query(description="Filter by status: active, completed, cancelled, all"),
     ] = "all",
 ) -> GoalSummaryResponse:
-    return await list_goals(db=db, user_id=current_user.id, status_filter=status)
+    return await list_goals(
+        db=db,
+        user_id=current_user.id,
+        user_currency=current_user.currency,
+        status_filter=status,
+    )
 
 
 @router.post("/", response_model=GoalResponse, status_code=201)
@@ -68,7 +73,9 @@ async def update_goal_endpoint(
     return await update_goal(db=db, goal_id=goal_id, user_id=current_user.id, data=data)
 
 
-@router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete(
+    "/{goal_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None
+)
 async def delete_goal_endpoint(
     current_user: CurrentUser,
     db: DbSession,
@@ -85,7 +92,11 @@ async def add_contribution_endpoint(
     data: ContributionCreate,
 ) -> GoalResponse:
     return await add_contribution(
-        db=db, goal_id=goal_id, user_id=current_user.id, data=data
+        db=db,
+        goal_id=goal_id,
+        user_id=current_user.id,
+        user_currency=current_user.currency,
+        data=data,
     )
 
 

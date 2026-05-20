@@ -49,3 +49,23 @@ export function useDeleteBudget() {
     },
   });
 }
+
+export function useCopySource(month: number, year: number) {
+  return useQuery({
+    queryKey: ['budget-copy-source', month, year],
+    queryFn: () => budgetApi.getCopySource(month, year),
+    retry: false,
+  });
+}
+
+export function useCopyPreviousBudgets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ month, year }: { month: number; year: number }) =>
+      budgetApi.copyPrevious(month, year),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['budget-copy-source'] });
+    },
+  });
+}

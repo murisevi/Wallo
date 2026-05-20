@@ -11,12 +11,15 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.banking.models import BankAccount, BankConnection
+from app.categories.models import Category
+from app.categories.schemas import CategoryResponse
 from app.core.cache import cached_response, invalidate_cache
 from app.dashboard.schemas import AccountSummary, DashboardResponse
 from app.goals.schemas import GoalResponse
-from app.goals.service import get_active_goal_for_dashboard
+from app.goals.service import get_active_goal_for_dashboard, get_reserved_for_goals
 from app.recurring_charges.service import get_upcoming as get_upcoming_charges
 from app.transactions.models import Transaction
 from app.transactions.schemas import TransactionResponse
@@ -24,6 +27,7 @@ from app.transactions.schemas import TransactionResponse
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 120  # seconds (2 min)
+SuggestedCategory = aliased(Category)
 
 
 class DashboardService:
@@ -87,9 +91,14 @@ class DashboardService:
     ) -> list[TransactionResponse]:
         """Load the 5 most recent transactions across all connected accounts."""
         txn_stmt = (
-            select(Transaction, BankAccount.iban)
+            select(Transaction, BankAccount.iban, Category, SuggestedCategory)
             .join(BankAccount, Transaction.account_id == BankAccount.id)
             .join(BankConnection, BankAccount.connection_id == BankConnection.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .outerjoin(
+                SuggestedCategory,
+                Transaction.suggested_category_id == SuggestedCategory.id,
+            )
             .where(
                 Transaction.user_id == user_id,
                 BankConnection.status != "disconnected",
@@ -100,9 +109,19 @@ class DashboardService:
         txn_rows = (await self._db.execute(txn_stmt)).all()
 
         recent: list[TransactionResponse] = []
-        for txn, iban in txn_rows:
+        for txn, iban, category, suggested_category in txn_rows:
             resp = TransactionResponse.model_validate(txn)
             resp.account_iban = iban
+            if category is not None:
+                resp.category_name = category.name
+                resp.category_icon = category.icon
+                resp.category = CategoryResponse.model_validate(category)
+            if suggested_category is not None:
+                resp.suggested_category_name = suggested_category.name
+                resp.suggested_category_icon = suggested_category.icon
+                resp.suggested_category = CategoryResponse.model_validate(
+                    suggested_category
+                )
             recent.append(resp)
         return recent
 
@@ -111,6 +130,9 @@ class DashboardService:
             return await get_active_goal_for_dashboard(self._db, user_id)
         except Exception:
             return None
+
+    async def _fetch_reserved_for_goals(self, user_id: uuid.UUID) -> Decimal:
+        return await get_reserved_for_goals(self._db, user_id)
 
     # ------------------------------------------------------------------
     # Public API
@@ -133,15 +155,19 @@ class DashboardService:
                 recent_transactions,
                 upcoming_charges,
                 active_goal,
+                reserved_for_goals,
             ) = await asyncio.gather(
                 self._fetch_accounts(user_id, user_currency),
                 self._fetch_recent_transactions(user_id),
                 get_upcoming_charges(self._db, user_id),
                 self._fetch_active_goal(user_id),
+                self._fetch_reserved_for_goals(user_id),
             )
 
             response = DashboardResponse(
                 total_balance=total_balance,
+                reserved_for_goals=reserved_for_goals,
+                available_balance=total_balance - reserved_for_goals,
                 currency=user_currency,
                 accounts=accounts,
                 recent_transactions=recent_transactions,

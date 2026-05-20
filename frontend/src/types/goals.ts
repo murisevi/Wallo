@@ -45,6 +45,12 @@ export interface GoalSummary {
   total_saved: string;
   /** Decimal → string */
   total_target: string;
+  /** Decimal serialised as string */
+  total_balance: string;
+  /** Decimal serialised as string */
+  reserved_for_goals: string;
+  /** Decimal serialised as string */
+  available_to_reserve: string;
   active_count: number;
   completed_count: number;
 }

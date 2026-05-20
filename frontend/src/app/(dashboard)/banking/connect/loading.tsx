@@ -1,4 +1,4 @@
-export default function ConnectLoading() {
+﻿export default function ConnectLoading() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       {/* Header skeleton */}
@@ -15,7 +15,7 @@ export default function ConnectLoading() {
         {Array.from({ length: 6 }, (_, i) => (
           <div
             key={i}
-            className="flex animate-pulse items-center gap-4 rounded-2xl bg-white px-5 py-4 shadow-[0_4px_16px_rgba(48,51,51,0.06)]"
+            className="flex animate-pulse items-center gap-4 rounded-2xl bg-white px-5 py-4 shadow-card-md"
           >
             <div className="h-9 w-9 rounded-xl bg-[#f3f4f3]" />
             <div className="flex-1">

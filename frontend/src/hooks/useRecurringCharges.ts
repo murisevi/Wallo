@@ -36,7 +36,7 @@ export function useRecurringChargeActions() {
   });
 
   const deny = useMutation({
-    mutationFn: (id: string) => recurringApi.delete(id),
+    mutationFn: (id: string) => recurringApi.dismiss(id),
     onSuccess: invalidate,
   });
 

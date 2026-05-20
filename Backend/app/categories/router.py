@@ -10,6 +10,8 @@ from fastapi import APIRouter, status
 
 from app.categories import service
 from app.categories.schemas import (
+    AcceptSuggestionsRequest,
+    AcceptSuggestionsResponse,
     CategoryCorrectionRequest,
     CategoryCorrectionResponse,
     CategoryCreate,
@@ -79,6 +81,21 @@ async def correct_transaction_category(
         confidence_score=transaction.confidence_score or 1.0,
         also_updated=also_updated,
     )
+
+
+@router.post("/suggestions/accept", response_model=AcceptSuggestionsResponse)
+async def accept_category_suggestions(
+    data: AcceptSuggestionsRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> AcceptSuggestionsResponse:
+    """Accept suggested categories in bulk via the active-learning path."""
+    summary = await service.accept_suggestions(
+        db=db,
+        user_id=current_user.id,
+        transaction_ids=data.transaction_ids,
+    )
+    return AcceptSuggestionsResponse(**summary)
 
 
 @router.post("/recategorize", response_model=RecategorizeResponse)

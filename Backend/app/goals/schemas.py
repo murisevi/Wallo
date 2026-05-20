@@ -118,5 +118,8 @@ class GoalSummaryResponse(BaseModel):
     goals: list[GoalResponse]
     total_saved: Decimal
     total_target: Decimal
+    total_balance: Decimal
+    reserved_for_goals: Decimal
+    available_to_reserve: Decimal
     active_count: int
     completed_count: int

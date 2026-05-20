@@ -159,6 +159,8 @@ async def test_dashboard_empty_state(client: AsyncClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_balance"] == "0"
+    assert data["reserved_for_goals"] == "0"
+    assert data["available_balance"] == "0"
     assert data["currency"] == "EUR"
     assert data["accounts"] == []
     assert data["recent_transactions"] == []
@@ -181,7 +183,41 @@ async def test_dashboard_total_balance(
     assert resp.status_code == 200
     data = resp.json()
     assert Decimal(data["total_balance"]) == Decimal("2000.00")
+    assert Decimal(data["reserved_for_goals"]) == Decimal("0")
+    assert Decimal(data["available_balance"]) == Decimal("2000.00")
     assert data["currency"] == "EUR"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_available_balance_subtracts_active_goal_reserves(
+    client: AsyncClient,
+    mock_eur_client: MagicMock,
+) -> None:
+    token = await register_and_login(client)
+    await connect_bank(client, token, mock_eur_client)
+    headers = auth(token)
+
+    goal_resp = await client.post(
+        "/api/v1/goals/",
+        json={"name": "Viaje", "target_amount": "1000"},
+        headers=headers,
+    )
+    goal_id = goal_resp.json()["id"]
+    await client.post(
+        f"/api/v1/goals/{goal_id}/contributions",
+        json={"amount": "500"},
+        headers=headers,
+    )
+
+    app.dependency_overrides[get_eb_client] = lambda: mock_eur_client
+    resp = await client.get("/api/v1/dashboard/", headers=headers)
+    app.dependency_overrides.pop(get_eb_client, None)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert Decimal(data["total_balance"]) == Decimal("2000.00")
+    assert Decimal(data["reserved_for_goals"]) == Decimal("500.00")
+    assert Decimal(data["available_balance"]) == Decimal("1500.00")
 
 
 @pytest.mark.asyncio
@@ -272,6 +308,7 @@ async def test_dashboard_multi_currency_excludes_foreign_from_total(
     assert len(data["accounts"]) == 2
     # Only EUR balance (2000) in total — USD (500) excluded
     assert Decimal(data["total_balance"]) == Decimal("2000.00")
+    assert Decimal(data["available_balance"]) == Decimal("2000.00")
     assert data["currency"] == "EUR"
 
 
@@ -299,5 +336,7 @@ async def test_dashboard_no_accounts_no_transactions(client: AsyncClient) -> Non
 
     data = resp.json()
     assert data["total_balance"] == "0"
+    assert data["reserved_for_goals"] == "0"
+    assert data["available_balance"] == "0"
     assert data["recent_transactions"] == []
     assert data["last_synced_at"] is None

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -90,7 +90,7 @@ function CallbackContent() {
 export default function CallbackPage() {
   return (
     <div className="mx-auto max-w-md">
-      <div className="overflow-hidden rounded-3xl bg-white shadow-[0_20px_40px_rgba(48,51,51,0.08)]">
+      <div className="overflow-hidden rounded-3xl bg-white shadow-card-lg">
         <Suspense
           fallback={
             <div className="flex flex-col items-center gap-4 py-16">

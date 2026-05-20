@@ -44,13 +44,26 @@ services:
     env_file:
       - .env
     volumes:
-      - ./backend:/app
       # Mount keys/ explicitly so the .pem file is always available inside the container
-      # even if the top-level volume mount is overridden in production.
-      - ./backend/keys:/app/keys:ro
+      # during development without syncing sensitive files through watch.
+      - ./Backend/keys:/app/keys:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://wallo:wallo@db:5432/wallo
       - REDIS_URL=redis://redis:6379/0
+    develop:
+      watch:
+        - action: sync
+          path: ./Backend
+          target: /app
+          ignore:
+            - .venv/
+            - .pytest_cache/
+            - .mypy_cache/
+            - .ruff_cache/
+            - .coverage
+            - keys/
+        - action: rebuild
+          path: ./Backend/requirements.txt
 
   frontend:
     build:
@@ -66,6 +79,18 @@ services:
       - .env
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
 
   nginx:
     build:
@@ -76,6 +101,11 @@ services:
       - frontend
     ports:
       - "3000:3000"
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./nginx/nginx.conf
+          target: /etc/nginx/nginx.conf
 
   pgadmin:
     image: dpage/pgadmin4:8

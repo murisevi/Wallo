@@ -41,7 +41,18 @@ class CategoryCorrectionResponse(BaseModel):
     old_category_id: uuid.UUID | None
     new_category_id: uuid.UUID
     confidence_score: float
-    also_updated: int  # other transactions with the same merchant updated in the same call
+    # Other transactions with the same merchant updated in the same call.
+    also_updated: int
+
+
+class AcceptSuggestionsRequest(BaseModel):
+    transaction_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+
+
+class AcceptSuggestionsResponse(BaseModel):
+    accepted: int
+    skipped: int
+    also_updated: int
 
 
 # ── Categorisation Stats ──────────────────────────────────────────────────
@@ -65,8 +76,10 @@ class RecategorizeResponse(BaseModel):
     total: int
     rule_based: int = 0
     merchant_map: int
+    mcc: int = 0
     global_dict: int = 0
     keyword_rule: int = 0
+    keyword_suggested: int = 0
     ml_auto: int
     ml_suggested: int
     uncategorized: int

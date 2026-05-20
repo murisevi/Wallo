@@ -39,7 +39,7 @@ export function ContributionPanel({
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-[#303333]">
-            {isWithdraw ? 'Retirar fondos' : 'Añadir fondos'}
+            {isWithdraw ? 'Liberar dinero' : 'Reservar dinero'}
           </span>
           <button
             onClick={() => setIsWithdraw((p) => !p)}
@@ -49,7 +49,7 @@ export function ContributionPanel({
                 : 'bg-[#e8f0f8] text-[#0060ad]'
             }`}
           >
-            {isWithdraw ? 'Modo retirar' : 'Modo añadir'}
+            {isWithdraw ? 'Modo liberar' : 'Modo reservar'}
           </button>
         </div>
         <button onClick={onCancel} className="text-[#9ca3af] hover:text-[#5d605f]">
@@ -93,7 +93,7 @@ export function ContributionPanel({
           disabled={isLoading || !customAmount}
           className="rounded-lg bg-[#0060ad] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0052a3] disabled:opacity-50 transition-colors"
         >
-          {isLoading ? '...' : isWithdraw ? 'Retirar' : 'Añadir'}
+          {isLoading ? '...' : isWithdraw ? 'Liberar' : 'Reservar'}
         </button>
       </div>
 

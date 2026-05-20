@@ -196,7 +196,9 @@ async def confirm(
 
 async def dismiss(db: AsyncSession, user_id: uuid.UUID, charge_id: uuid.UUID) -> None:
     """User dismisses a charge (e.g. unsubscribed). Detection will skip it."""
-    rc = _require_charge(await get_by_id(db, user_id, charge_id))
+    rc = await get_by_id(db, user_id, charge_id)
+    if rc is None:
+        return
     rc.status = "dismissed"
     await db.flush()
 
@@ -216,6 +218,8 @@ async def set_installment(
 
 async def delete(db: AsyncSession, user_id: uuid.UUID, charge_id: uuid.UUID) -> None:
     """User denies a charge — permanently remove the row."""
-    rc = _require_charge(await get_by_id(db, user_id, charge_id))
+    rc = await get_by_id(db, user_id, charge_id)
+    if rc is None:
+        return
     await db.delete(rc)
     await db.flush()

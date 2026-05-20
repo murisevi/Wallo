@@ -1,10 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -21,6 +23,7 @@ import {
   TrendingUp,
   CreditCard,
   Calendar,
+  Info,
 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTransactions } from '@/hooks/useTransactions';
@@ -104,6 +107,20 @@ function getCategoryIcon(icon: string | null): React.ElementType {
   return ICON_MAP[icon.toLowerCase()] ?? CreditCard;
 }
 
+function renderCategoryIcon(icon: string | null, className: string) {
+  const iconName = icon?.toLowerCase();
+  if (iconName === 'shopping-cart') return <ShoppingCart size={15} className={className} />;
+  if (iconName === 'utensils') return <Utensils size={15} className={className} />;
+  if (iconName === 'car') return <Car size={15} className={className} />;
+  if (iconName === 'home') return <Home size={15} className={className} />;
+  if (iconName === 'heart') return <Heart size={15} className={className} />;
+  if (iconName === 'shirt') return <Shirt size={15} className={className} />;
+  if (iconName === 'book') return <BookOpen size={15} className={className} />;
+  if (iconName === 'repeat') return <Repeat size={15} className={className} />;
+  if (iconName === 'trending-up') return <TrendingUp size={15} className={className} />;
+  return <CreditCard size={15} className={className} />;
+}
+
 // ─── Euro formatter ──────────────────────────────────────────────────────────
 
 function formatEuro(amount: string, currency: string): string {
@@ -113,6 +130,38 @@ function formatEuro(amount: string, currency: string): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Math.abs(parseFloat(amount)));
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return '—';
+  return new Date(value + 'T00:00:00').toLocaleDateString('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatTransactionStatus(status: string): string {
+  if (status === 'BOOK') return 'Contabilizada';
+  if (status === 'PDNG') return 'Pendiente';
+  return status;
+}
+
+function formatCategorizationMethod(method: Transaction['categorization_method']): string {
+  if (method === 'rule_based') return 'Regla directa';
+  if (method === 'merchant_map') return 'Mapa de comercio';
+  if (method === 'mcc') return 'Código comercio';
+  if (method === 'global_dict') return 'Diccionario';
+  if (method === 'keyword_rule') return 'Regla semántica';
+  if (method === 'ml_auto') return 'Automática';
+  if (method === 'manual') return 'Manual';
+  return 'Sin método';
+}
+
+function formatSuggestionMethod(method: Transaction['suggested_categorization_method']): string {
+  if (method === 'keyword_suggested') return 'Sugerencia semántica';
+  if (method === 'ml_suggested') return 'Sugerencia ML';
+  return 'Sin sugerencia';
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
@@ -153,7 +202,9 @@ interface CategoryModalProps {
 
 function CategoryModal({ transaction, categories, onClose, onSaved }: CategoryModalProps) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<string | null>(transaction.category_id ?? null);
+  const [selected, setSelected] = useState<string | null>(
+    transaction.category_id ?? transaction.suggested_category_id ?? null,
+  );
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const mutation = useMutation({
@@ -285,113 +336,219 @@ function CategoryModal({ transaction, categories, onClose, onSaved }: CategoryMo
 interface TableRowProps {
   txn: Transaction;
   onEdit: (txn: Transaction) => void;
+  isExpanded: boolean;
+  onToggleExpanded: (txnId: string) => void;
 }
 
-function TableRow({ txn, onEdit }: TableRowProps) {
+function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+        {label}
+      </dt>
+      <dd className="mt-1 break-words text-sm font-medium text-[#303333]">
+        {value || '—'}
+      </dd>
+    </div>
+  );
+}
+
+function TableRow({ txn, onEdit, isExpanded, onToggleExpanded }: TableRowProps) {
   const isCredit = txn.credit_debit_indicator === 'CRDT';
   const label =
     txn.description ?? txn.creditor_name ?? txn.debtor_name ?? 'Transacción';
 
-  const formattedDate = new Date(txn.date + 'T00:00:00').toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const formattedDate = formatDate(txn.date);
 
   const formattedAmount = formatEuro(txn.amount, txn.currency);
 
   const colours = getCategoryColours(txn.category_name, isCredit);
-  const Icon = isCredit
-    ? TrendingUp
-    : getCategoryIcon(txn.category_icon);
-
   const accountDisplay = txn.account_iban
     ? `·· ${txn.account_iban.slice(-4)}`
     : '—';
+  const confidenceLabel =
+    txn.confidence_score != null ? `${Math.round(txn.confidence_score * 100)}%` : '—';
+  const suggestionLabel = txn.suggested_category_name
+    ? `${txn.suggested_category_name}${
+        txn.suggested_confidence_score != null
+          ? ` (${Math.round(txn.suggested_confidence_score * 100)}%)`
+          : ''
+      }`
+    : '—';
 
   return (
-    <tr className="group border-b border-[#f3f4f3] last:border-0 hover:bg-[#faf9f8] transition-colors">
-      {/* Date */}
-      <td className="py-4 pl-6 pr-4 text-sm text-[#5d605f] whitespace-nowrap">
-        {formattedDate}
-      </td>
-
-      {/* Merchant */}
-      <td className="py-4 px-4 max-w-[220px]">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-              isCredit ? INCOME_COLOURS.iconBg : colours.iconBg
-            }`}
-          >
-            <Icon
-              size={15}
-              className={isCredit ? INCOME_COLOURS.iconColor : colours.iconColor}
-            />
-          </div>
-          <span
-            title={label}
-            className="truncate text-sm font-semibold text-[#303333]"
-          >
-            {label}
-          </span>
-        </div>
-      </td>
-
-      {/* Category badge */}
-      <td className="py-4 px-4">
-        {txn.category ? (
-          <CategoryBadge
-            name={txn.category.name}
-            color={txn.category.color}
-            confidence={txn.confidence_score}
-            method={txn.categorization_method}
-            onClick={() => onEdit(txn)}
-          />
-        ) : txn.category_name ? (
-          // Fallback: name string without color object (shouldn't happen with new backend)
-          <span className="inline-block rounded-full bg-[#f3f4f3] px-3 py-1 text-xs font-semibold text-[#5d605f]">
-            {txn.category_name}
-          </span>
-        ) : (
-          <button
-            onClick={() => onEdit(txn)}
-            className="text-xs text-[#5d605f] hover:text-[#0060ad] transition-colors"
-          >
-            + Categorizar
-          </button>
-        )}
-      </td>
-
-      {/* Account */}
-      <td className="py-4 px-4 text-sm text-[#5d605f] whitespace-nowrap">
-        {accountDisplay}
-      </td>
-
-      {/* Amount */}
-      <td
-        className={`py-4 px-4 text-right text-sm font-bold tabular-nums ${
-          isCredit ? 'text-[#1a6b3c]' : 'text-red-500'
+    <>
+      <tr
+        onClick={() => onToggleExpanded(txn.id)}
+        className={`group cursor-pointer border-b border-[#f3f4f3] last:border-0 transition-colors ${
+          isExpanded ? 'bg-[#fbfcfb]' : 'hover:bg-[#faf9f8]'
         }`}
       >
-        {isCredit ? '+ ' : '- '}{formattedAmount}
-      </td>
+        {/* Date */}
+        <td className="py-4 pl-6 pr-4 text-sm text-[#5d605f] whitespace-nowrap">
+          {formattedDate}
+        </td>
 
-      {/* Actions */}
-      <td className="py-4 pl-4 pr-6 text-right">
-        <button
-          onClick={() => onEdit(txn)}
-          title="Editar categoría"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#f3f4f3] px-3 py-1.5 text-xs font-medium text-[#5d605f] opacity-0 group-hover:opacity-100 hover:bg-[#edeeed] hover:text-[#303333] transition-all"
+        {/* Merchant */}
+        <td className="py-4 px-4 max-w-[220px]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                isCredit ? INCOME_COLOURS.iconBg : colours.iconBg
+              }`}
+            >
+              {isCredit
+                ? <TrendingUp size={15} className={INCOME_COLOURS.iconColor} />
+                : renderCategoryIcon(txn.category_icon, colours.iconColor)}
+            </div>
+            <span
+              title={label}
+              className="truncate text-sm font-semibold text-[#303333]"
+            >
+              {label}
+            </span>
+          </div>
+        </td>
+
+        {/* Category badge */}
+        <td className="py-4 px-4">
+          {txn.category ? (
+            <span onClick={(event) => event.stopPropagation()}>
+              <CategoryBadge
+                name={txn.category.name}
+                color={txn.category.color}
+                confidence={txn.confidence_score}
+                method={txn.categorization_method}
+                onClick={() => onEdit(txn)}
+              />
+            </span>
+          ) : txn.category_name ? (
+            // Fallback: name string without color object (shouldn't happen with new backend)
+            <span className="inline-block rounded-full bg-[#f3f4f3] px-3 py-1 text-xs font-semibold text-[#5d605f]">
+              {txn.category_name}
+            </span>
+          ) : txn.suggested_category ? (
+            <span onClick={(event) => event.stopPropagation()}>
+              <CategoryBadge
+                name={`Sugerida: ${txn.suggested_category.name}`}
+                color={txn.suggested_category.color}
+                confidence={txn.suggested_confidence_score}
+                method={txn.suggested_categorization_method}
+                onClick={() => onEdit(txn)}
+              />
+            </span>
+          ) : txn.suggested_category_name ? (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(txn);
+              }}
+              className="inline-block rounded-full border border-dashed border-[#0060ad]/40 bg-[#e8f0f8] px-3 py-1 text-xs font-semibold text-[#0060ad]"
+            >
+              Sugerida: {txn.suggested_category_name}
+            </button>
+          ) : (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(txn);
+              }}
+              className="text-xs text-[#5d605f] hover:text-[#0060ad] transition-colors"
+            >
+              + Categorizar
+            </button>
+          )}
+        </td>
+
+        {/* Account */}
+        <td className="py-4 px-4 text-sm text-[#5d605f] whitespace-nowrap">
+          {accountDisplay}
+        </td>
+
+        {/* Amount */}
+        <td
+          className={`py-4 px-4 text-right text-sm font-bold tabular-nums ${
+            isCredit ? 'text-[#1a6b3c]' : 'text-red-500'
+          }`}
         >
-          <Pencil size={12} />
-          Editar
-        </button>
-      </td>
-    </tr>
+          {isCredit ? '+ ' : '- '}{formattedAmount}
+        </td>
+
+        {/* Actions */}
+        <td className="py-4 pl-4 pr-6 text-right">
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(txn);
+              }}
+              title="Editar categoría"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#f3f4f3] px-3 py-1.5 text-xs font-medium text-[#5d605f] opacity-0 group-hover:opacity-100 hover:bg-[#edeeed] hover:text-[#303333] transition-all"
+            >
+              <Pencil size={12} />
+              Editar
+            </button>
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleExpanded(txn.id);
+              }}
+              title={isExpanded ? 'Ocultar detalles' : 'Ver detalles'}
+              aria-expanded={isExpanded}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#f3f4f3] text-[#5d605f] hover:bg-[#edeeed] hover:text-[#303333] transition-colors"
+            >
+              {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </button>
+          </div>
+        </td>
+      </tr>
+
+      {isExpanded && (
+        <tr className="border-b border-[#e8ecea] bg-[#fbfcfb]">
+          <td colSpan={6} className="px-6 py-5">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e8f0f8] text-[#0060ad]">
+                <Info size={15} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-base font-bold text-[#303333]">
+                  {label}
+                </p>
+                <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <DetailItem label="Descripción completa" value={txn.description} />
+                  <DetailItem label="Acreedor" value={txn.creditor_name} />
+                  <DetailItem label="Deudor" value={txn.debtor_name} />
+                  <DetailItem label="IBAN" value={txn.account_iban} />
+                  <DetailItem label="Fecha operación" value={formatDate(txn.date)} />
+                  <DetailItem label="Fecha valor" value={formatDate(txn.value_date)} />
+                  <DetailItem label="Estado" value={formatTransactionStatus(txn.status)} />
+                  <DetailItem
+                    label="Tipo"
+                    value={isCredit ? 'Ingreso (CRDT)' : 'Cargo (DBIT)'}
+                  />
+                  <DetailItem label="Categoría" value={txn.category_name ?? 'Sin categoría'} />
+                  <DetailItem label="Sugerencia" value={suggestionLabel} />
+                  <DetailItem
+                    label="Método sugerencia"
+                    value={formatSuggestionMethod(txn.suggested_categorization_method)}
+                  />
+                  <DetailItem
+                    label="Categorización"
+                    value={formatCategorizationMethod(txn.categorization_method)}
+                  />
+                  <DetailItem label="Confianza" value={confidenceLabel} />
+                  <DetailItem label="Referencia banco" value={txn.entry_reference} />
+                  <DetailItem label="Código banco" value={txn.bank_transaction_code} />
+                  <DetailItem label="Moneda" value={txn.currency} />
+                </dl>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
-
 // ─── Skeleton row ─────────────────────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -504,10 +661,10 @@ function Pagination({ page, totalPages, total, pageSize, onPage }: PaginationPro
 export default function TransactionsPage() {
   const searchParams = useSearchParams();
 
-  // URL params injected from /reports category click
-  const initialCategoryId = searchParams.get('category_id') ?? '';
-  const initialDateFrom = searchParams.get('date_from') ?? '';
-  const initialDateTo = searchParams.get('date_to') ?? '';
+  // URL params injected when navigating from /budgets category click
+  const categoryIdParam = searchParams.get('category_id') ?? '';
+  const dateFromParam = searchParams.get('date_from') ?? '';
+  const dateToParam = searchParams.get('date_to') ?? '';
 
   // ── Applied filters (trigger fetch) ───────────────────────────────────────
   const [page, setPage] = useState(1);
@@ -519,21 +676,41 @@ export default function TransactionsPage() {
     dateTo: string;
   }>({
     search: '',
-    categoryId: initialCategoryId,
+    categoryId: categoryIdParam,
     accountId: '',
-    dateFrom: initialDateFrom,
-    dateTo: initialDateTo,
+    dateFrom: dateFromParam,
+    dateTo: dateToParam,
   });
 
   // ── Pending (form) filters ─────────────────────────────────────────────────
   const [pendingSearch, setPendingSearch] = useState('');
-  const [pendingCategory, setPendingCategory] = useState(initialCategoryId);
+  const [pendingCategory, setPendingCategory] = useState(categoryIdParam);
   const [pendingAccount, setPendingAccount] = useState('');
-  const [pendingDateFrom, setPendingDateFrom] = useState(initialDateFrom);
-  const [pendingDateTo, setPendingDateTo] = useState(initialDateTo);
+  const [pendingDateFrom, setPendingDateFrom] = useState(dateFromParam);
+  const [pendingDateTo, setPendingDateTo] = useState(dateToParam);
+
+  // Sync filters when URL params change (same-route navigation from /budgets)
+  useEffect(() => {
+    // The filters are mirrored from URL params for budget-to-transaction links.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+    setPendingSearch('');
+    setPendingCategory(categoryIdParam);
+    setPendingAccount('');
+    setPendingDateFrom(dateFromParam);
+    setPendingDateTo(dateToParam);
+    setAppliedFilters({
+      search: '',
+      categoryId: categoryIdParam,
+      accountId: '',
+      dateFrom: dateFromParam,
+      dateTo: dateToParam,
+    });
+  }, [categoryIdParam, dateFromParam, dateToParam]);
 
   // ── Editing modal ──────────────────────────────────────────────────────────
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
+  const [expandedTxnId, setExpandedTxnId] = useState<string | null>(null);
 
   // ── Toast ──────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -551,14 +728,37 @@ export default function TransactionsPage() {
 
   const { data: categories } = useCategories();
   const { data: accounts } = useAccounts();
+  const queryClient = useQueryClient();
 
   const totalPages = data?.total_pages ?? 1;
+  const visibleSuggestionIds =
+    data?.transactions
+      .filter((txn) => !txn.category_id && txn.suggested_category_id)
+      .map((txn) => txn.id) ?? [];
+
+  const acceptSuggestionsMutation = useMutation({
+    mutationFn: (transactionIds: string[]) => categoryApi.acceptSuggestions(transactionIds),
+    onSuccess: (summary) => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      setToast({
+        message: `${summary.accepted} sugerencias aceptadas`,
+        type: 'success',
+      });
+    },
+    onError: () => {
+      setToast({
+        message: 'No se pudieron aceptar las sugerencias',
+        type: 'error',
+      });
+    },
+  });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   function handleApply(e: React.FormEvent) {
     e.preventDefault();
     setPage(1);
+    setExpandedTxnId(null);
     setAppliedFilters({
       search: pendingSearch.trim(),
       categoryId: pendingCategory,
@@ -575,6 +775,7 @@ export default function TransactionsPage() {
     setPendingDateFrom('');
     setPendingDateTo('');
     setPage(1);
+    setExpandedTxnId(null);
     setAppliedFilters({ search: '', categoryId: '', accountId: '', dateFrom: '', dateTo: '' });
   }
 
@@ -588,6 +789,10 @@ export default function TransactionsPage() {
   function handleCategorySaved(updated: Transaction) {
     setToast({ message: 'Categoría actualizada', type: 'success' });
     void updated; // query is already invalidated by mutation
+  }
+
+  function handleToggleExpanded(txnId: string) {
+    setExpandedTxnId((current) => (current === txnId ? null : txnId));
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -621,7 +826,7 @@ export default function TransactionsPage() {
         {/* ── Filter bar ─────────────────────────────────────────────────── */}
         <form
           onSubmit={handleApply}
-          className="rounded-2xl bg-white p-5 shadow-[0_2px_12px_rgba(48,51,51,0.06)]"
+          className="rounded-2xl bg-white p-5 shadow-card"
         >
           <div className="flex flex-wrap gap-3">
             {/* Search */}
@@ -750,7 +955,7 @@ export default function TransactionsPage() {
 
         {/* ── Error state ─────────────────────────────────────────────────── */}
         {isError && (
-          <div className="rounded-2xl bg-white px-6 py-8 text-center shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+          <div className="rounded-2xl bg-white px-6 py-8 text-center shadow-card-md">
             <p className="text-sm font-medium text-red-600">
               No se pudieron cargar las transacciones.
             </p>
@@ -764,11 +969,42 @@ export default function TransactionsPage() {
           </div>
         )}
 
+        {!isError && visibleSuggestionIds.length > 0 && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-[#0060ad]/25 bg-[#e8f0f8] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-[#303333]">
+                Hay {visibleSuggestionIds.length} sugerencias visibles listas para revisar
+              </p>
+              <p className="mt-0.5 text-xs text-[#5d605f]">
+                Al aceptarlas se guardan como correcciones y aprenden para próximos movimientos.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => acceptSuggestionsMutation.mutate(visibleSuggestionIds)}
+              disabled={acceptSuggestionsMutation.isPending}
+              className="rounded-xl bg-[#0060ad] px-4 py-2.5 text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-60"
+            >
+              {acceptSuggestionsMutation.isPending
+                ? 'Aceptando...'
+                : 'Aceptar sugerencias visibles'}
+            </button>
+          </div>
+        )}
+
         {/* ── Transaction table ────────────────────────────────────────────── */}
         {!isError && (
-          <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_16px_rgba(48,51,51,0.06)]">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-card-md">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px]">
+              <table className="w-full min-w-[760px] table-fixed">
+                <colgroup>
+                  <col className="w-[14%]" />
+                  <col className="w-[28%]" />
+                  <col className="w-[23%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-[#f3f4f3]">
                     <th className="py-3.5 pl-6 pr-4 text-left text-[10px] font-bold uppercase tracking-widest text-[#5d605f]">
@@ -806,7 +1042,13 @@ export default function TransactionsPage() {
                     </tr>
                   ) : (
                     data?.transactions.map((txn) => (
-                      <TableRow key={txn.id} txn={txn} onEdit={setEditingTxn} />
+                      <TableRow
+                        key={txn.id}
+                        txn={txn}
+                        onEdit={setEditingTxn}
+                        isExpanded={expandedTxnId === txn.id}
+                        onToggleExpanded={handleToggleExpanded}
+                      />
                     ))
                   )}
                 </tbody>

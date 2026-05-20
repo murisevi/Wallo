@@ -7,9 +7,10 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.banking.models import BankAccount, BankConnection
 from app.goals.models import GoalContribution, SavingsGoal
 from app.goals.schemas import (
     ContributionCreate,
@@ -19,7 +20,6 @@ from app.goals.schemas import (
     GoalSummaryResponse,
     GoalUpdate,
 )
-
 
 # ---------------------------------------------------------------------------
 # Computed field helpers
@@ -62,7 +62,7 @@ def _compute_pace_status(
         return "on_track"
     days_left = (deadline - date.today()).days
     months_until_deadline = max(days_left / 30, 0.1)
-    required_monthly = float((target - current)) / months_until_deadline
+    required_monthly = float(target - current) / months_until_deadline
     mc = float(monthly)
     if mc >= required_monthly * 1.1:
         return "ahead"
@@ -158,9 +158,47 @@ async def _get_recent_contributions(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def get_reserved_for_goals(db: AsyncSession, user_id: uuid.UUID) -> Decimal:
+    stmt = select(
+        func.coalesce(func.sum(SavingsGoal.current_amount), Decimal("0"))
+    ).where(
+        SavingsGoal.user_id == user_id,
+        SavingsGoal.status == "active",
+    )
+    result = (await db.execute(stmt)).scalar_one()
+    return Decimal(str(result or "0"))
+
+
+async def get_total_bank_balance(
+    db: AsyncSession, user_id: uuid.UUID, user_currency: str
+) -> Decimal:
+    stmt = (
+        select(func.coalesce(func.sum(BankAccount.balance_amount), Decimal("0")))
+        .select_from(BankAccount)
+        .join(BankConnection, BankAccount.connection_id == BankConnection.id)
+        .where(
+            BankAccount.user_id == user_id,
+            BankAccount.currency == user_currency,
+            BankAccount.balance_amount.is_not(None),
+            BankConnection.status != "disconnected",
+        )
+    )
+    result = (await db.execute(stmt)).scalar_one()
+    return Decimal(str(result or "0"))
+
+
+async def get_available_to_reserve(
+    db: AsyncSession, user_id: uuid.UUID, user_currency: str
+) -> Decimal:
+    total_balance = await get_total_bank_balance(db, user_id, user_currency)
+    reserved = await get_reserved_for_goals(db, user_id)
+    return total_balance - reserved
+
+
 async def list_goals(
     db: AsyncSession,
     user_id: uuid.UUID,
+    user_currency: str = "EUR",
     status_filter: str = "all",
 ) -> GoalSummaryResponse:
     stmt = select(SavingsGoal).where(SavingsGoal.user_id == user_id)
@@ -185,10 +223,16 @@ async def list_goals(
         elif goal.status == "completed":
             completed_count += 1
 
+    total_balance = await get_total_bank_balance(db, user_id, user_currency)
+    reserved_for_goals = await get_reserved_for_goals(db, user_id)
+
     return GoalSummaryResponse(
         goals=goal_responses,
         total_saved=total_saved,
         total_target=total_target,
+        total_balance=total_balance,
+        reserved_for_goals=reserved_for_goals,
+        available_to_reserve=total_balance - reserved_for_goals,
         active_count=active_count,
         completed_count=completed_count,
     )
@@ -232,21 +276,34 @@ async def update_goal(
     goal = await _get_goal_or_404(db, goal_id, user_id)
     updates = data.model_dump(exclude_unset=True)
 
-    if "status" in updates and updates["status"] == "completed" and goal.status != "completed":
+    completing = (
+        "status" in updates
+        and updates["status"] == "completed"
+        and goal.status != "completed"
+    )
+    if completing:
         goal.completed_at = datetime.now(tz=timezone.utc)
 
     for field, value in updates.items():
         setattr(goal, field, value)
 
     await db.flush()
+    await db.refresh(goal)
     contributions = await _get_recent_contributions(db, goal.id)
     return _build_goal_response(goal, contributions)
 
 
-async def delete_goal(
-    db: AsyncSession, goal_id: uuid.UUID, user_id: uuid.UUID
-) -> None:
+async def delete_goal(db: AsyncSession, goal_id: uuid.UUID, user_id: uuid.UUID) -> None:
     goal = await _get_goal_or_404(db, goal_id, user_id)
+    # Explicitly delete child contributions before the goal so the cascade
+    # works correctly across both PostgreSQL (FK ON DELETE CASCADE) and
+    # SQLite in-memory (which ignores FK constraints without PRAGMA foreign_keys=ON).
+    contributions_stmt = select(GoalContribution).where(
+        GoalContribution.goal_id == goal_id
+    )
+    contributions = list((await db.execute(contributions_stmt)).scalars().all())
+    for contrib in contributions:
+        await db.delete(contrib)
     await db.delete(goal)
     await db.flush()
 
@@ -256,6 +313,7 @@ async def add_contribution(
     goal_id: uuid.UUID,
     user_id: uuid.UUID,
     data: ContributionCreate,
+    user_currency: str = "EUR",
 ) -> GoalResponse:
     goal = await _get_goal_or_404(db, goal_id, user_id)
 
@@ -272,6 +330,16 @@ async def add_contribution(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El importe acumulado no puede ser negativo",
         )
+    if data.amount > 0:
+        available = await get_available_to_reserve(db, user_id, user_currency)
+        if data.amount > available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "No hay suficiente dinero disponible para reservar "
+                    f"{data.amount:.2f} €"
+                ),
+            )
 
     contribution = GoalContribution(
         goal_id=goal_id,
@@ -282,6 +350,7 @@ async def add_contribution(
     db.add(contribution)
     goal.current_amount = new_amount  # type: ignore[assignment]
     await db.flush()
+    await db.refresh(goal)
 
     contributions = await _get_recent_contributions(db, goal.id)
     return _build_goal_response(goal, contributions)

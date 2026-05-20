@@ -169,6 +169,17 @@ export const categoryApi = {
       { category_id: categoryId },
     );
   },
+
+  /** Accept visible suggested categories through the active-learning endpoint. */
+  acceptSuggestions(transactionIds: string[]): Promise<{
+    accepted: number;
+    skipped: number;
+    also_updated: number;
+  }> {
+    return api.post('/categories/suggestions/accept', {
+      transaction_ids: transactionIds,
+    });
+  },
 };
 
 // ─── Recurring charges endpoints ─────────────────────────────────────────────

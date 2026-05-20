@@ -63,7 +63,7 @@ class BankingService:
     async def get_connections(
         self, user_id: uuid.UUID
     ) -> list[BankConnectionResponse]:
-        """Return all non-disconnected bank connections for a user, with account stats."""
+        """Return non-disconnected bank connections for a user, with account stats."""
         conn_result = await self._db.execute(
             select(BankConnection).where(
                 BankConnection.user_id == user_id,
@@ -204,6 +204,17 @@ class BankingService:
             )
             self._db.add(connection)
             await self._db.flush()
+
+        existing_session_result = await self._db.execute(
+            select(BankConnection).where(
+                BankConnection.user_id == user_id,
+                BankConnection.session_id == session_id,
+            )
+        )
+        existing_session = existing_session_result.scalar_one_or_none()
+        if existing_session is not None and existing_session.id != connection.id:
+            connection.status = "disconnected"
+            connection = existing_session
 
         # Activate the connection
         connection.session_id = session_id
@@ -390,7 +401,7 @@ class BankingService:
     async def disconnect_bank(
         self, user_id: uuid.UUID, connection_id: uuid.UUID
     ) -> None:
-        """Soft-delete a BankConnection (sets status=disconnected, preserves history)."""
+        """Soft-delete a connection while preserving its transaction history."""
         result = await self._db.execute(
             select(BankConnection).where(
                 BankConnection.id == connection_id,

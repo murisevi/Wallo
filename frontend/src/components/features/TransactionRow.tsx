@@ -64,6 +64,17 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
             <span className="rounded-full bg-[#f3f4f3] px-2 py-0.5 text-xs font-medium text-[#5d605f]">
               {transaction.category_name}
             </span>
+          ) : transaction.suggested_category ? (
+            <CategoryBadge
+              name={`Sugerida: ${transaction.suggested_category.name}`}
+              color={transaction.suggested_category.color}
+              confidence={transaction.suggested_confidence_score}
+              method={transaction.suggested_categorization_method}
+            />
+          ) : transaction.suggested_category_name ? (
+            <span className="rounded-full border border-dashed border-[#0060ad]/40 bg-[#e8f0f8] px-2 py-0.5 text-xs font-medium text-[#0060ad]">
+              Sugerida: {transaction.suggested_category_name}
+            </span>
           ) : null}
           <span className="text-xs text-[#5d605f]">{formattedDate}</span>
         </div>

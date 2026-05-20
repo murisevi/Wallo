@@ -14,6 +14,7 @@ class TransactionResponse(BaseModel):
 
     id: uuid.UUID
     account_id: uuid.UUID
+    entry_reference: str | None
     amount: Decimal
     currency: str
     date: date
@@ -22,6 +23,8 @@ class TransactionResponse(BaseModel):
     debtor_name: str | None
     creditor_name: str | None
     credit_debit_indicator: str
+    bank_transaction_code: str | None
+    merchant_category_code: str | None = None
     status: str
     category_text: str | None = None  # legacy string column (rarely populated)
     account_iban: str | None = None
@@ -31,9 +34,18 @@ class TransactionResponse(BaseModel):
     category: CategoryResponse | None = None       # nested category object
     category_name: str | None = None               # convenience duplicate for frontend
     category_icon: str | None = None               # convenience duplicate for frontend
-    categorization_method: str | None = None       # "merchant_map" | "ml_auto" | "ml_suggested" | "manual"
-    confidence_score: float | None = None          # 0.0 – 1.0
+    # "merchant_map" | "ml_auto" | "ml_suggested" | "manual"
+    categorization_method: str | None = None
+    confidence_score: float | None = None          # 0.0 - 1.0
     is_manually_corrected: bool = False
+
+    # ML suggestion fields — do not affect reports/budgets until confirmed
+    suggested_category_id: uuid.UUID | None = None
+    suggested_category: CategoryResponse | None = None
+    suggested_category_name: str | None = None
+    suggested_category_icon: str | None = None
+    suggested_categorization_method: str | None = None
+    suggested_confidence_score: float | None = None
 
 
 class TransactionCategoryUpdate(BaseModel):

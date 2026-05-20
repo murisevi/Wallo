@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -120,7 +120,7 @@ export default function ConnectBankPage() {
                 key={`${bank.name}-${bank.country}`}
                 onClick={() => handleConnect(bank)}
                 disabled={connecting !== null}
-                className={`flex items-center gap-4 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_4px_16px_rgba(48,51,51,0.06)] transition-all hover:shadow-[0_8px_24px_rgba(48,51,51,0.1)] disabled:opacity-60 ${
+                className={`flex items-center gap-4 rounded-2xl bg-white px-5 py-4 text-left shadow-card-md transition-all hover:shadow-card-lg disabled:opacity-60 ${
                   isBBVA ? 'ring-2 ring-amber-300' : ''
                 }`}
               >

@@ -1,9 +1,12 @@
 """ML-based transaction categorizer.
 
-Uses TF-IDF + GradientBoosting for text classification.
-Supports training, prediction with confidence scores,
-and model persistence via joblib.
+Uses calibrated logistic regression over short-text and transaction metadata
+features. The public ``predict`` API stays compatible with the original
+implementation while ``predict_with_margin`` exposes top-k ambiguity to the
+categorization service.
 """
+
+from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
@@ -14,38 +17,48 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import cross_val_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer, LabelEncoder
+from sklearn.preprocessing import FunctionTransformer, LabelEncoder, OneHotEncoder
 
-from app.categories.text_cleaner import clean_bank_description
+from app.categories.mcc_mapping import normalize_mcc
+from app.categories.seed import DEFAULT_CATEGORIES
+from app.categories.text_cleaner import (
+    clean_bank_description,
+    detect_transaction_type,
+    extract_merchant_key,
+)
 
 logger = logging.getLogger(__name__)
 
-# Default paths for the serialized model artefacts
 MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "models"
 MODEL_PATH = MODEL_DIR / "categorizer_model.joblib"
 ENCODER_PATH = MODEL_DIR / "label_encoder.joblib"
 
+CATEGORY_TYPES = {cat["name"]: cat["type"] for cat in DEFAULT_CATEGORIES}
+
+
+def _amount_bucket(amount: float) -> str:
+    absolute = abs(float(amount))
+    if absolute < 10:
+        return "lt_10"
+    if absolute < 30:
+        return "10_30"
+    if absolute < 100:
+        return "30_100"
+    if absolute < 500:
+        return "100_500"
+    return "gte_500"
+
 
 class TransactionCategorizer:
-    """ML categorizer with TF-IDF text features + numerical features.
-
-    Usage:
-        categorizer = TransactionCategorizer()
-        categorizer.train(training_df)  # DataFrame: description, amount, category
-        category, confidence = categorizer.predict("MERCADONA", -45.30)
-        categorizer.save()
-
-        # Later...
-        categorizer = TransactionCategorizer.load()
-        category, confidence = categorizer.predict("REPSOL", -52.00)
-    """
+    """ML categorizer with text, merchant, transaction-type and amount features."""
 
     def __init__(self) -> None:
-        self.pipeline: Pipeline | None = None
+        self.pipeline: Pipeline | CalibratedClassifierCV | None = None
         self.label_encoder: LabelEncoder = LabelEncoder()
         self._is_trained = False
 
@@ -61,52 +74,58 @@ class TransactionCategorizer:
     ) -> dict:
         """Train the categorizer on a DataFrame.
 
-        Args:
-            df: Must have columns 'description', 'amount', 'category'.
-            test_size: Fraction of data used for cross-validation reporting.
-
-        Returns:
-            Dict with training metrics: accuracy, cv_mean, cv_std,
-            n_samples, n_classes, classes, trained_at.
+        Required columns are ``description``, ``amount`` and ``category``.
+        Optional columns such as ``bank_transaction_code`` and
+        ``merchant_category_code`` are used when present.
         """
-        df = df.copy()
-        df["clean_desc"] = df["description"].apply(clean_bank_description)
+        del test_size  # kept for backwards-compatible call sites
+        prepared = self._prepare_frame(df)
+        y = self.label_encoder.fit_transform(prepared["category"])
 
-        # Encode labels
-        y = self.label_encoder.fit_transform(df["category"])
-
-        # Numerical feature engineering
-        df["abs_amount"] = df["amount"].abs()
-        df["log_amount"] = np.log1p(df["abs_amount"])
-        df["is_income"] = (df["amount"] > 0).astype(int)
-
-        # Text sub-pipeline
-        text_features = Pipeline(
-            [
-                (
-                    "tfidf",
-                    TfidfVectorizer(
-                        analyzer="char_wb",
-                        ngram_range=(2, 4),
-                        max_features=3000,
-                        lowercase=True,
-                        strip_accents="unicode",
-                    ),
-                ),
-            ]
+        text_char = TfidfVectorizer(
+            analyzer="char_wb",
+            ngram_range=(2, 5),
+            max_features=5000,
+            lowercase=True,
+            strip_accents="unicode",
         )
-
-        # Numeric sub-pipeline (pass-through)
+        text_word = TfidfVectorizer(
+            analyzer="word",
+            ngram_range=(1, 2),
+            max_features=2500,
+            lowercase=True,
+            strip_accents="unicode",
+            token_pattern=r"(?u)\b\w+\b",  # noqa: S106 - sklearn token regex
+        )
+        merchant_word = TfidfVectorizer(
+            analyzer="word",
+            ngram_range=(1, 2),
+            max_features=1200,
+            lowercase=True,
+            strip_accents="unicode",
+            token_pattern=r"(?u)\b\w+\b",  # noqa: S106 - sklearn token regex
+        )
         numeric_features = Pipeline(
-            [
-                ("passthrough", FunctionTransformer(validate=False)),
-            ]
+            [("passthrough", FunctionTransformer(validate=False))]
         )
+        categorical_features = OneHotEncoder(handle_unknown="ignore")
 
         preprocessor = ColumnTransformer(
             transformers=[
-                ("text", text_features, "clean_desc"),
+                ("text_char", text_char, "clean_desc"),
+                ("text_word", text_word, "model_text"),
+                ("merchant", merchant_word, "merchant_key"),
                 ("nums", numeric_features, ["log_amount", "is_income"]),
+                (
+                    "cats",
+                    categorical_features,
+                    [
+                        "tx_type",
+                        "amount_bucket",
+                        "bank_transaction_code",
+                        "merchant_category_code",
+                    ],
+                ),
             ],
             remainder="drop",
         )
@@ -116,51 +135,65 @@ class TransactionCategorizer:
                 ("preprocessor", preprocessor),
                 (
                     "classifier",
-                    GradientBoostingClassifier(
-                        n_estimators=200,
-                        max_depth=5,
-                        learning_rate=0.1,
-                        min_samples_leaf=2,
+                    LogisticRegression(
+                        C=2.0,
+                        class_weight="balanced",
+                        max_iter=2000,
+                        solver="liblinear",
                         random_state=42,
                     ),
                 ),
             ]
         )
 
-        X = df[["clean_desc", "log_amount", "is_income"]]
+        X = self._feature_columns(prepared)
+        n_folds = max(2, min(5, int(pd.Series(y).value_counts().min())))
+        cv_strategy = StratifiedKFold(
+            n_splits=n_folds,
+            shuffle=True,
+            random_state=42,
+        )
+        cv_scores = cross_val_score(
+            inner_pipeline,
+            X,
+            y,
+            cv=cv_strategy,
+            scoring="accuracy",
+        )
 
-        # Cross-validate before wrapping in calibration
-        n_folds = min(5, len(df) // 5 or 2)
-        cv_scores = cross_val_score(inner_pipeline, X, y, cv=n_folds, scoring="accuracy")
-
-        # Wrap with isotonic calibration; fall back to cv=3 then uncalibrated.
         calibrated: Pipeline | CalibratedClassifierCV
-        for cv in (min(5, n_folds), 3, None):
+        for cv in (n_folds, 3, None):
             try:
                 if cv is None:
                     calibrated = inner_pipeline
                     calibrated.fit(X, y)
                 else:
                     calibrated = CalibratedClassifierCV(
-                        inner_pipeline, cv=cv, method="isotonic"
+                        inner_pipeline,
+                        cv=min(cv, n_folds),
+                        method="sigmoid",
                     )
                     calibrated.fit(X, y)
                 break
             except Exception as exc:
-                logger.warning("Calibration with cv=%s failed (%s), trying fallback", cv, exc)
+                logger.warning(
+                    "Calibration with cv=%s failed (%s), trying fallback",
+                    cv,
+                    exc,
+                )
         else:
-            # Should never reach here, but satisfy mypy
             calibrated = inner_pipeline
             calibrated.fit(X, y)
 
-        self.pipeline = calibrated  # type: ignore[assignment]
+        self.pipeline = calibrated
         self._is_trained = True
+        train_pred = self.pipeline.predict(X)
 
         metrics = {
-            "accuracy": float(self.pipeline.score(X, y)),
+            "accuracy": float(accuracy_score(y, train_pred)),
             "cv_mean": float(cv_scores.mean()),
             "cv_std": float(cv_scores.std()),
-            "n_samples": len(df),
+            "n_samples": len(prepared),
             "n_classes": len(self.label_encoder.classes_),
             "classes": list(self.label_encoder.classes_),
             "trained_at": datetime.now(timezone.utc).isoformat(),
@@ -175,73 +208,75 @@ class TransactionCategorizer:
         )
         return metrics
 
-    def predict(self, description: str, amount: float) -> tuple[str, float]:
-        """Predict category for a single transaction.
+    def predict(
+        self,
+        description: str,
+        amount: float,
+        bank_transaction_code: str | None = None,
+        merchant_category_code: str | None = None,
+    ) -> tuple[str, float]:
+        """Predict category for a single transaction."""
+        category, confidence, _margin = self.predict_with_margin(
+            description,
+            amount,
+            bank_transaction_code=bank_transaction_code,
+            merchant_category_code=merchant_category_code,
+        )
+        return category, confidence
 
-        Args:
-            description: Raw or cleaned bank description.
-            amount: Transaction amount (negative = expense, positive = income).
-
-        Returns:
-            Tuple of (category_name, confidence_score 0-1).
-
-        Raises:
-            RuntimeError: If model hasn't been trained or loaded.
-        """
+    def predict_with_margin(
+        self,
+        description: str,
+        amount: float,
+        bank_transaction_code: str | None = None,
+        merchant_category_code: str | None = None,
+    ) -> tuple[str, float, float]:
+        """Predict category plus top1-top2 probability margin."""
         if not self._is_trained or self.pipeline is None:
             raise RuntimeError("Model not trained. Call train() or load() first.")
 
-        clean_desc = clean_bank_description(description)
-        log_amount = float(np.log1p(abs(amount)))
-        is_income = 1 if amount > 0 else 0
-
-        X = pd.DataFrame(
-            [
-                {
-                    "clean_desc": clean_desc,
-                    "log_amount": log_amount,
-                    "is_income": is_income,
-                }
-            ]
+        X = self._feature_columns(
+            self._prepare_frame(
+                pd.DataFrame(
+                    [
+                        {
+                            "description": description,
+                            "amount": amount,
+                            "category": "__unknown__",
+                            "bank_transaction_code": bank_transaction_code,
+                            "merchant_category_code": merchant_category_code,
+                        }
+                    ]
+                )
+            )
         )
 
         proba = self.pipeline.predict_proba(X)[0]
-        predicted_idx = int(np.argmax(proba))
-        confidence = float(proba[predicted_idx])
+        labels = list(self.label_encoder.classes_)
+        allowed_type = "income" if amount > 0 else "expense"
+        for idx, label in enumerate(labels):
+            if CATEGORY_TYPES.get(str(label)) != allowed_type:
+                proba[idx] = -1.0
+
+        ranked = np.argsort(proba)[::-1]
+        predicted_idx = int(ranked[0])
+        confidence = max(float(proba[predicted_idx]), 0.0)
+        second = max(float(proba[int(ranked[1])]), 0.0) if len(ranked) > 1 else 0.0
+        margin = confidence - second
         category_name = str(self.label_encoder.inverse_transform([predicted_idx])[0])
-        return category_name, confidence
+        return category_name, confidence, margin
 
     def predict_batch(
         self, descriptions: list[str], amounts: list[float]
     ) -> list[tuple[str, float]]:
-        """Predict categories for a batch of transactions.
-
-        Returns:
-            List of (category_name, confidence_score) tuples.
-        """
+        """Predict categories for a batch of transactions."""
         if not self._is_trained or self.pipeline is None:
             raise RuntimeError("Model not trained.")
 
-        clean_descs = [clean_bank_description(d) for d in descriptions]
-        log_amounts = [float(np.log1p(abs(a))) for a in amounts]
-        is_incomes = [1 if a > 0 else 0 for a in amounts]
-
-        X = pd.DataFrame(
-            {
-                "clean_desc": clean_descs,
-                "log_amount": log_amounts,
-                "is_income": is_incomes,
-            }
-        )
-
-        probas = self.pipeline.predict_proba(X)
-        results: list[tuple[str, float]] = []
-        for proba in probas:
-            idx = int(np.argmax(proba))
-            conf = float(proba[idx])
-            cat = str(self.label_encoder.inverse_transform([idx])[0])
-            results.append((cat, conf))
-        return results
+        return [
+            self.predict(description, amount)
+            for description, amount in zip(descriptions, amounts, strict=False)
+        ]
 
     def save(
         self,
@@ -250,7 +285,7 @@ class TransactionCategorizer:
     ) -> None:
         """Persist model and label encoder to disk."""
         if not self._is_trained or self.pipeline is None:
-            raise RuntimeError("Nothing to save — model has not been trained.")
+            raise RuntimeError("Nothing to save - model has not been trained.")
         model_path = model_path or MODEL_PATH
         encoder_path = encoder_path or ENCODER_PATH
         model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -263,12 +298,8 @@ class TransactionCategorizer:
         cls,
         model_path: Path | None = None,
         encoder_path: Path | None = None,
-    ) -> "TransactionCategorizer":
-        """Load a trained model from disk.
-
-        Raises:
-            FileNotFoundError: If no model file exists at the given path.
-        """
+    ) -> TransactionCategorizer:
+        """Load a trained model from disk."""
         model_path = model_path or MODEL_PATH
         encoder_path = encoder_path or ENCODER_PATH
 
@@ -284,3 +315,58 @@ class TransactionCategorizer:
         instance._is_trained = True
         logger.info("Model loaded from %s", model_path)
         return instance
+
+    def _prepare_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        prepared = df.copy()
+        prepared["description"] = prepared["description"].fillna("").astype(str)
+        prepared["amount"] = pd.to_numeric(
+            prepared["amount"],
+            errors="coerce",
+        ).fillna(0)
+        prepared["clean_desc"] = prepared["description"].apply(clean_bank_description)
+        prepared["merchant_key"] = prepared["clean_desc"].apply(extract_merchant_key)
+        prepared["tx_type"] = prepared["description"].apply(detect_transaction_type)
+        prepared["abs_amount"] = prepared["amount"].abs()
+        prepared["log_amount"] = np.log1p(prepared["abs_amount"])
+        prepared["is_income"] = (prepared["amount"] > 0).astype(int)
+        prepared["amount_bucket"] = prepared["amount"].apply(_amount_bucket)
+        bank_code = (
+            prepared["bank_transaction_code"]
+            if "bank_transaction_code" in prepared
+            else pd.Series([""] * len(prepared), index=prepared.index)
+        )
+        mcc = (
+            prepared["merchant_category_code"]
+            if "merchant_category_code" in prepared
+            else pd.Series([""] * len(prepared), index=prepared.index)
+        )
+        prepared["bank_transaction_code"] = bank_code.fillna("").astype(str).str.upper()
+        prepared["merchant_category_code"] = mcc.fillna("").apply(
+            lambda value: normalize_mcc(value) or ""
+        )
+        prepared["model_text"] = (
+            prepared["clean_desc"]
+            + " "
+            + prepared["merchant_key"]
+            + " "
+            + prepared["tx_type"]
+            + " "
+            + prepared["merchant_category_code"]
+        )
+        return prepared
+
+    @staticmethod
+    def _feature_columns(df: pd.DataFrame) -> pd.DataFrame:
+        return df[
+            [
+                "clean_desc",
+                "model_text",
+                "merchant_key",
+                "log_amount",
+                "is_income",
+                "tx_type",
+                "amount_bucket",
+                "bank_transaction_code",
+                "merchant_category_code",
+            ]
+        ]

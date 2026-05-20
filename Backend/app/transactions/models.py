@@ -66,6 +66,9 @@ class Transaction(Base):
         String(4), nullable=False
     )  # CRDT | DBIT
     bank_transaction_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    merchant_category_code: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(10), nullable=False, default="BOOK", server_default="BOOK"
     )  # BOOK | PDNG
@@ -82,13 +85,30 @@ class Transaction(Base):
         index=True,
     )
     categorization_method: Mapped[str | None] = mapped_column(
-        String(20), nullable=True  # "merchant_map" | "ml_auto" | "ml_suggested" | "manual"
+        # "merchant_map" | "ml_auto" | "ml_suggested" | "manual"
+        String(20),
+        nullable=True,
     )
     confidence_score: Mapped[float | None] = mapped_column(
-        Float, nullable=True  # 0.0 – 1.0
+        Float,
+        nullable=True,  # 0.0 - 1.0
     )
     is_manually_corrected: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # ML suggestions are intentionally separate from category_id so reports and
+    # budgets only use confirmed/high-confidence categories.
+    suggested_category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    suggested_confidence_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    suggested_categorization_method: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -101,7 +121,14 @@ class Transaction(Base):
     # ORM relationship (unidirectional: Transaction → Category)
     # Named category_rel to avoid conflicting with the CategoryResponse
     # schema field of the same logical name in TransactionResponse.
-    category_rel: Mapped[Category | None] = relationship("Category")
+    category_rel: Mapped[Category | None] = relationship(
+        "Category",
+        foreign_keys=[category_id],
+    )
+    suggested_category_rel: Mapped[Category | None] = relationship(
+        "Category",
+        foreign_keys=[suggested_category_id],
+    )
 
     # Non-unique index — partial unique constraint on
     # (account_id, entry_reference) WHERE entry_reference IS NOT NULL

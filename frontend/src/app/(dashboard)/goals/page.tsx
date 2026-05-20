@@ -23,6 +23,7 @@ export default function GoalsPage() {
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);
   const [deletingGoal, setDeletingGoal] = useState<SavingsGoal | null>(null);
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [contributionError, setContributionError] = useState<string | null>(null);
 
   if (isLoading) return <GoalsLoading />;
 
@@ -59,7 +60,17 @@ export default function GoalsPage() {
   }
 
   function handleContribute(id: string, amount: number, note: string | null) {
-    addContribution.mutate({ id, data: { amount, note } });
+    setContributionError(null);
+    addContribution.mutate(
+      { id, data: { amount, note } },
+      {
+        onError: (error) => {
+          setContributionError(
+            error instanceof Error ? error.message : 'No se pudo reservar el dinero.',
+          );
+        },
+      },
+    );
   }
 
   return (
@@ -79,6 +90,12 @@ export default function GoalsPage() {
         <GoalEmptyState onCreateClick={() => setShowNewModal(true)} />
       ) : (
         <>
+          {contributionError && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700">
+              {contributionError}
+            </div>
+          )}
+
           {summary && (
             <GoalSummaryCard
               summary={summary}

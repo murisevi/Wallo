@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.goals.models  # noqa: F401 — register metadata with Base
 from app.auth.models import User
+from app.banking.models import BankAccount, BankConnection
 from app.goals.models import GoalContribution, SavingsGoal
 from app.goals.schemas import ContributionCreate, GoalCreate, GoalUpdate
 from app.goals.service import (
@@ -24,12 +25,37 @@ from app.goals.service import (
 async def _seed_user(db: AsyncSession) -> uuid.UUID:
     user = User(
         email=f"test_{uuid.uuid4().hex[:8]}@test.com",
-        hashed_password="hashed",
+        hashed_password="hashed",  # noqa: S106 - test fixture password hash
         name="Test User",
     )
     db.add(user)
     await db.flush()
     return user.id
+
+
+async def _seed_account(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    balance: Decimal = Decimal("1000"),
+) -> None:
+    connection = BankConnection(
+        user_id=user_id,
+        bank_name="Banco Test",
+        bank_country="ES",
+        status="active",
+    )
+    db.add(connection)
+    await db.flush()
+    db.add(
+        BankAccount(
+            connection_id=connection.id,
+            user_id=user_id,
+            external_uid=f"acc_{uuid.uuid4().hex}",
+            currency="EUR",
+            balance_amount=balance,
+        )
+    )
+    await db.flush()
 
 
 @pytest.mark.asyncio
@@ -115,6 +141,7 @@ async def test_get_goal_detail():
 
     async with TestSessionLocal() as db:
         user_id = await _seed_user(db)
+        await _seed_account(db, user_id)
         created = await create_goal(
             db=db,
             user_id=user_id,
@@ -132,6 +159,7 @@ async def test_update_goal():
 
     async with TestSessionLocal() as db:
         user_id = await _seed_user(db)
+        await _seed_account(db, user_id)
         created = await create_goal(
             db=db,
             user_id=user_id,
@@ -154,6 +182,7 @@ async def test_mark_completed_sets_completed_at():
 
     async with TestSessionLocal() as db:
         user_id = await _seed_user(db)
+        await _seed_account(db, user_id)
         created = await create_goal(
             db=db,
             user_id=user_id,
@@ -178,6 +207,7 @@ async def test_delete_goal_cascade():
 
     async with TestSessionLocal() as db:
         user_id = await _seed_user(db)
+        await _seed_account(db, user_id)
         created = await create_goal(
             db=db,
             user_id=user_id,

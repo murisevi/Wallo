@@ -23,6 +23,8 @@ class AccountSummary(BaseModel):
 
 class DashboardResponse(BaseModel):
     total_balance: Decimal
+    reserved_for_goals: Decimal = Decimal("0")
+    available_balance: Decimal = Decimal("0")
     currency: str
     accounts: list[AccountSummary]
     recent_transactions: list[TransactionResponse]

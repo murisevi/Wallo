@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
@@ -34,7 +34,7 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col items-center justify-center px-6 py-16 bg-[#faf9f8]">
-      <div className="w-full max-w-md rounded-3xl bg-white p-10 shadow-[0_20px_40px_rgba(48,51,51,0.08)]">
+      <div className="w-full max-w-md rounded-3xl bg-white p-10 shadow-card-lg">
         {/* Logo */}
         <div className="mb-8 text-center">
           <p className="text-3xl font-extrabold tracking-tight text-[#0060ad]">Wallo</p>
