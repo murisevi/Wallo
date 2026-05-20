@@ -54,6 +54,15 @@ desktop.ini
 *.swo
 *~
 
+# AI assistant / coding agent files
+CLAUDE.md
+AGENTS*.md
+**/AGENTS*.md
+.claude/
+.agents/
+.cursor/
+.windsurf/
+
 # Logs
 *.log
 logs/
