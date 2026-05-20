@@ -63,6 +63,13 @@ AGENTS*.md
 .cursor/
 .windsurf/
 
+# Local project notes / planning documents
+OBJETIVO DE AHORRO.md
+DESIGN (1).md
+CATEGORIES DESIGN.md
+PROJECT_STATUS.md
+docs/
+
 # Logs
 *.log
 logs/
