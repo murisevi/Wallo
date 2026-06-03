@@ -1,38 +1,39 @@
 # Wallo
 
-Wallo es una aplicacion web de finanzas personales desarrollada como TFG. Permite
-registrarse, conectar cuentas bancarias mediante PSD2/Open Banking con Enable
-Banking, sincronizar saldos y transacciones, categorizar movimientos, gestionar
-presupuestos, detectar cobros recurrentes, consultar informes y reservar dinero
-virtualmente para objetivos de ahorro.
+Wallo is a personal finance web application developed as a Final Degree Project
+(TFG). It lets users create an account, connect bank accounts through
+PSD2/Open Banking with Enable Banking, synchronize balances and transactions,
+categorize transactions, manage budgets, detect recurring charges, view
+reports, and virtually allocate money to savings goals.
 
 ## Stack
 
-| Capa | Tecnologia |
+| Layer | Technology |
 | --- | --- |
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS, TanStack Query |
 | Backend | FastAPI, Python 3.12, SQLAlchemy async, Pydantic v2, Alembic |
-| Base de datos | PostgreSQL 16 |
-| Cache | Redis 7, opcional pero incluido en Docker |
+| Database | PostgreSQL 16 |
+| Cache | Redis 7, optional but included in Docker |
 | Open Banking | Enable Banking |
-| Desarrollo/despliegue local | Docker Compose, nginx, pgAdmin |
+| Local development/deployment | Docker Compose, nginx, pgAdmin |
 
-## Requisitos
+## Requirements
 
-Para ejecutar todo con Docker:
+To run the full application with Docker:
 
-- Docker Desktop o Docker Engine con Docker Compose.
-- Una aplicacion sandbox de Enable Banking si quieres probar la conexion bancaria real.
+- Docker Desktop or Docker Engine with Docker Compose.
+- An Enable Banking sandbox application if you want to test an actual banking
+  connection.
 
-Para desarrollo sin Docker tambien necesitas:
+For development without Docker, you will also need:
 
-- Python 3.12 o superior.
-- Node.js 20 o superior.
+- Python 3.12 or later.
+- Node.js 20 or later.
 - npm.
 
-## Configuracion inicial
+## Initial Setup
 
-Clona el repositorio y crea tu archivo de entorno:
+Clone the repository and create your environment file:
 
 ```bash
 git clone https://github.com/murisevi/Wallo.git
@@ -40,17 +41,17 @@ cd Wallo
 cp .env.example .env
 ```
 
-En Windows PowerShell, si no tienes `cp` disponible:
+On Windows PowerShell, if `cp` is not available:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Edita `.env` y revisa estos valores:
+Edit `.env` and review these values:
 
 ```env
-JWT_SECRET_KEY=pon-aqui-un-secreto-largo-y-aleatorio
-ENABLE_BANKING_APP_ID=tu-application-id
+JWT_SECRET_KEY=put-a-long-random-secret-here
+ENABLE_BANKING_APP_ID=your-application-id
 ENABLE_BANKING_PRIVATE_KEY_PATH=keys/private.pem
 ENABLE_BANKING_ENVIRONMENT=sandbox
 ENABLE_BANKING_REDIRECT_URL=https://localhost:3000/banking/callback
@@ -58,34 +59,34 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 CORS_ORIGINS=http://localhost:3000,https://localhost:3000
 ```
 
-La clave privada `.pem` de Enable Banking debe guardarse en:
+The Enable Banking `.pem` private key must be stored at:
 
 ```text
 Backend/keys/private.pem
 ```
 
-La ruta del `.env` es relativa al backend, por eso el valor recomendado es
-`keys/private.pem`. No subas nunca esa clave al repositorio.
+The path in `.env` is relative to the backend, so the recommended value is
+`keys/private.pem`. Never commit this key to the repository.
 
-## Configurar Enable Banking
+## Configure Enable Banking
 
-1. Entra en el panel de Enable Banking y crea una aplicacion en modo sandbox.
-2. Copia el Application ID en `ENABLE_BANKING_APP_ID`.
-3. Descarga la clave privada `.pem` y guardala como `Backend/keys/private.pem`.
-4. Registra esta redirect URL para la ejecucion con Docker:
+1. Open the Enable Banking dashboard and create an application in sandbox mode.
+2. Copy the Application ID into `ENABLE_BANKING_APP_ID`.
+3. Download the `.pem` private key and save it as `Backend/keys/private.pem`.
+4. Register this redirect URL for the Docker setup:
 
 ```text
 https://localhost:3000/banking/callback
 ```
 
-El contenedor de nginx usa HTTPS con un certificado autofirmado para localhost.
-El navegador mostrara un aviso de seguridad la primera vez; aceptalo solo en
-desarrollo local.
+The nginx container uses HTTPS with a self-signed certificate for localhost. The
+browser will show a security warning the first time; accept it only for local
+development.
 
-## Ejecucion recomendada con Docker
+## Recommended Docker Setup
 
-En el primer arranque, levanta primero la infraestructura, aplica migraciones y
-despues arranca la aplicacion completa:
+On the first run, start the infrastructure first, apply migrations, and then
+start the full application:
 
 ```bash
 docker compose build
@@ -94,13 +95,13 @@ docker compose run --rm backend alembic upgrade head
 docker compose up -d
 ```
 
-En arranques posteriores normalmente basta con:
+On later runs, this is usually enough:
 
 ```bash
 docker compose up -d
 ```
 
-La aplicacion quedara disponible en:
+The application will be available at:
 
 - Frontend: https://localhost:3000
 - Backend API: http://localhost:8000
@@ -108,49 +109,51 @@ La aplicacion quedara disponible en:
 - ReDoc: http://localhost:8000/redoc
 - pgAdmin: http://localhost:5050
 
-Credenciales por defecto de pgAdmin:
+Default pgAdmin credentials:
 
 ```text
 Email: admin@wallo.com
 Password: admin
 ```
 
-Para ver logs:
+To view logs:
 
 ```bash
 docker compose logs -f backend
 docker compose logs -f frontend
 ```
 
-Para parar los servicios sin borrar datos:
+To stop the services without deleting data:
 
 ```bash
 docker compose down
 ```
 
-Para parar y borrar tambien el volumen de PostgreSQL:
+To stop the services and also delete the PostgreSQL volume:
 
 ```bash
 docker compose down -v
 ```
 
-## Primer uso
+## First Use
 
-1. Abre https://localhost:3000.
-2. Acepta el certificado local si el navegador lo solicita.
-3. Registra un usuario.
-4. Inicia sesion.
-5. Ve a la opcion de conectar banco.
-6. Selecciona un banco sandbox, normalmente BBVA o Mock ASPSP segun tu cuenta de Enable Banking.
-7. Completa el flujo de autorizacion.
-8. Al volver a Wallo, el backend sincronizara cuentas, saldos y transacciones.
+1. Open https://localhost:3000.
+2. Accept the local certificate if the browser asks you to.
+3. Register a user.
+4. Sign in.
+5. Go to the bank connection option.
+6. Select a sandbox bank, usually BBVA or Mock ASPSP depending on your Enable
+   Banking account.
+7. Complete the authorization flow.
+8. When you return to Wallo, the backend will synchronize accounts, balances,
+   and transactions.
 
-## Desarrollo local sin ejecutar toda la app en Docker
+## Local Development Without Running the Full App in Docker
 
-Puedes usar Docker solo para PostgreSQL y Redis, y ejecutar backend/frontend en
-tu maquina.
+You can use Docker only for PostgreSQL and Redis, and run the backend/frontend
+on your machine.
 
-### 1. Levantar PostgreSQL y Redis
+### 1. Start PostgreSQL and Redis
 
 ```bash
 docker compose up -d db redis
@@ -158,14 +161,14 @@ docker compose up -d db redis
 
 ### 2. Backend
 
-Desde otra terminal:
+From another terminal:
 
 ```bash
 cd Backend
 python -m venv .venv
 ```
 
-Activar entorno virtual:
+Activate the virtual environment:
 
 ```bash
 # Windows PowerShell
@@ -175,14 +178,14 @@ Activar entorno virtual:
 source .venv/bin/activate
 ```
 
-Instalar dependencias:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 pip install pytest pytest-asyncio pytest-cov ruff
 ```
 
-Aplicar migraciones y arrancar FastAPI:
+Apply migrations and start FastAPI:
 
 ```bash
 alembic upgrade head
@@ -191,7 +194,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### 3. Frontend
 
-Desde otra terminal:
+From another terminal:
 
 ```bash
 cd frontend
@@ -199,14 +202,14 @@ npm install
 npm run dev
 ```
 
-El frontend local de Next.js escucha en:
+The local Next.js frontend listens on:
 
 ```text
 http://localhost:3001
 ```
 
-Si usas este modo sin nginx, ajusta `.env` para que el backend acepte el origen
-del frontend y para que Enable Banking vuelva al puerto correcto:
+If you use this mode without nginx, adjust `.env` so the backend accepts the
+frontend origin and Enable Banking redirects back to the correct port:
 
 ```env
 ENABLE_BANKING_REDIRECT_URL=http://localhost:3001/banking/callback
@@ -214,10 +217,10 @@ CORS_ORIGINS=http://localhost:3001,http://localhost:3000,https://localhost:3000
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 ```
 
-Tambien debes registrar `http://localhost:3001/banking/callback` como redirect
-URL en Enable Banking si vas a probar la conexion bancaria en este modo.
+You must also register `http://localhost:3001/banking/callback` as a redirect
+URL in Enable Banking if you are going to test the bank connection in this mode.
 
-## Comandos utiles
+## Useful Commands
 
 Backend:
 
@@ -247,49 +250,49 @@ docker compose run --rm backend alembic current
 docker compose run --rm backend alembic upgrade head
 ```
 
-## Variables de entorno principales
+## Main Environment Variables
 
-| Variable | Uso |
+| Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Conexion SQLAlchemy async a PostgreSQL. Docker la sobreescribe para usar `db`. |
-| `REDIS_URL` | Conexion a Redis. Docker la sobreescribe para usar `redis`. |
-| `JWT_SECRET_KEY` | Secreto para firmar tokens JWT. Cambialo siempre fuera de demo. |
-| `ENABLE_BANKING_APP_ID` | ID de la aplicacion en Enable Banking. |
-| `ENABLE_BANKING_PRIVATE_KEY_PATH` | Ruta de la clave `.pem`, relativa a `Backend/`. |
-| `ENABLE_BANKING_ENVIRONMENT` | Normalmente `sandbox` en desarrollo. |
-| `ENABLE_BANKING_REDIRECT_URL` | URL a la que Enable Banking devuelve el `code`. |
-| `NEXT_PUBLIC_API_URL` | URL publica del backend que usa el frontend. |
-| `CORS_ORIGINS` | Origenes permitidos por FastAPI, separados por comas. |
+| `DATABASE_URL` | SQLAlchemy async connection to PostgreSQL. Docker overrides it to use `db`. |
+| `REDIS_URL` | Redis connection. Docker overrides it to use `redis`. |
+| `JWT_SECRET_KEY` | Secret used to sign JWT tokens. Always change it outside demos. |
+| `ENABLE_BANKING_APP_ID` | Application ID in Enable Banking. |
+| `ENABLE_BANKING_PRIVATE_KEY_PATH` | Path to the `.pem` key, relative to `Backend/`. |
+| `ENABLE_BANKING_ENVIRONMENT` | Usually `sandbox` during development. |
+| `ENABLE_BANKING_REDIRECT_URL` | URL where Enable Banking returns the `code`. |
+| `NEXT_PUBLIC_API_URL` | Public backend URL used by the frontend. |
+| `CORS_ORIGINS` | Origins allowed by FastAPI, separated by commas. |
 
-## Solucion de problemas
+## Troubleshooting
 
-Si el backend arranca pero no conecta con Enable Banking:
+If the backend starts but cannot connect to Enable Banking:
 
-- Comprueba que `ENABLE_BANKING_APP_ID` existe en `.env`.
-- Comprueba que `Backend/keys/private.pem` existe.
-- Comprueba que `ENABLE_BANKING_PRIVATE_KEY_PATH=keys/private.pem`.
-- Revisa `docker compose logs -f backend`.
+- Check that `ENABLE_BANKING_APP_ID` exists in `.env`.
+- Check that `Backend/keys/private.pem` exists.
+- Check that `ENABLE_BANKING_PRIVATE_KEY_PATH=keys/private.pem`.
+- Review `docker compose logs -f backend`.
 
-Si el flujo bancario vuelve con error:
+If the banking flow returns with an error:
 
-- Confirma que la redirect URL registrada en Enable Banking coincide exactamente
-  con `ENABLE_BANKING_REDIRECT_URL`.
-- En Docker usa `https://localhost:3000/banking/callback`.
-- En desarrollo sin nginx usa `http://localhost:3001/banking/callback`.
+- Confirm that the redirect URL registered in Enable Banking exactly matches
+  `ENABLE_BANKING_REDIRECT_URL`.
+- In Docker, use `https://localhost:3000/banking/callback`.
+- In development without nginx, use `http://localhost:3001/banking/callback`.
 
-Si el frontend no puede llamar al backend:
+If the frontend cannot call the backend:
 
-- Comprueba `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`.
-- Comprueba que `CORS_ORIGINS` incluye el origen desde el que abres el frontend.
-- Revisa la consola del navegador y los logs del backend.
+- Check `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`.
+- Check that `CORS_ORIGINS` includes the origin where you open the frontend.
+- Review the browser console and backend logs.
 
-Si la base de datos esta vacia o faltan tablas:
+If the database is empty or tables are missing:
 
 ```bash
 docker compose run --rm backend alembic upgrade head
 ```
 
-Si quieres reiniciar completamente la base de datos local:
+If you want to completely reset the local database:
 
 ```bash
 docker compose down -v
@@ -299,20 +302,20 @@ docker compose run --rm backend alembic upgrade head
 docker compose up -d
 ```
 
-## Seguridad
+## Security
 
-No subas al repositorio:
+Do not commit:
 
 - `.env`
-- claves `.pem`
+- `.pem` keys
 - tokens
-- credenciales bancarias
-- dumps de base de datos con datos reales
+- bank credentials
+- database dumps containing real data
 
-El archivo `.gitignore` ya ignora los archivos sensibles y los documentos locales
-de planificacion del proyecto.
+The `.gitignore` file already excludes sensitive files and local project
+planning documents.
 
-## Licencia
+## License
 
-Proyecto desarrollado como Trabajo de Fin de Grado. No incluye una licencia de
-uso externo por defecto.
+This project was developed as a Final Degree Project. It does not include a
+license for external use by default.
